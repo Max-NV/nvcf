@@ -1009,6 +1009,37 @@ func TestChooseTokenStatsSumsInputOutputAtSamePeriod(t *testing.T) {
 	}
 }
 
+func TestChooseTokenStatsPrefersTighterInputOutputPeriodOverFiner(t *testing.T) {
+	t.Parallel()
+
+	results := map[ratelimit.LimitDimension]*ratelimit.RateLimitResult{
+		// Finer period, but loose: barely touched, huge remaining.
+		ratelimit.InputTokensPerSecond: {
+			CurrentValue: 1000,
+			Requested:    1,
+			RateLimit:    ratelimit.RateLimit{Limit: 1000, Period: time.Second},
+		},
+		// Coarser period, but nearly exhausted: this is what's actually about to
+		// throttle the caller, and must not be hidden behind the finer, looser one.
+		ratelimit.InputTokensPerMinute: {
+			CurrentValue: 100,
+			Requested:    99,
+			RateLimit:    ratelimit.RateLimit{Limit: 100, Period: time.Minute},
+		},
+	}
+
+	limit, remaining, _, ok := chooseTokenStats(results)
+	if !ok {
+		t.Fatal("expected a result")
+	}
+	if limit != 100 {
+		t.Fatalf("limit = %d, want 100 (the tighter per-minute limit)", limit)
+	}
+	if remaining != 1 {
+		t.Fatalf("remaining = %d, want 1 (the tighter per-minute remaining)", remaining)
+	}
+}
+
 func TestChooseTokenStatsPrefersFinerInputOutputPeriod(t *testing.T) {
 	t.Parallel()
 

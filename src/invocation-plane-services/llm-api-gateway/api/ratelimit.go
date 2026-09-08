@@ -725,6 +725,12 @@ func chooseTokenStats(
 		}
 	}
 
+	var (
+		chosenLimit      int64
+		chosenRemaining  int64
+		chosenResetAfter time.Duration
+		chosen           bool
+	)
 	for _, pair := range [][2]ratelimit.LimitDimension{
 		{ratelimit.InputTokensPerSecond, ratelimit.OutputTokensPerSecond},
 		{ratelimit.InputTokensPerMinute, ratelimit.OutputTokensPerMinute},
@@ -750,9 +756,18 @@ func chooseTokenStats(
 				resetAfter = result.ResetAfter()
 			}
 		}
-		if hasLimit {
-			return limit, remaining, resetAfter, true
+		if !hasLimit {
+			continue
 		}
+		// Prefer whichever configured period is closest to being exhausted, so the
+		// header always surfaces the constraint that will actually throttle next
+		// instead of whichever period happens to be checked first.
+		if !chosen || remaining < chosenRemaining {
+			chosenLimit, chosenRemaining, chosenResetAfter, chosen = limit, remaining, resetAfter, true
+		}
+	}
+	if chosen {
+		return chosenLimit, chosenRemaining, chosenResetAfter, true
 	}
 
 	return 0, 0, 0, false
