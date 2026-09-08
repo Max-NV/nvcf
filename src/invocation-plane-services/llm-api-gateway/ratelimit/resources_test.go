@@ -20,6 +20,7 @@ package ratelimit
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestDoResourceLimitEnforcesInputOutputTokenDimensions(t *testing.T) {
@@ -77,6 +78,18 @@ func TestDoResourceLimitEnforcesInputOutputTokenDimensions(t *testing.T) {
 			name:      "output tokens per week",
 			dimension: OutputTokensPerWeek,
 			limit:     ResourceLimit{SubjectKey: "t8", OutputTokensPerWeek: 10},
+			request:   ResourceRequest{OutputTokens: 20},
+		},
+		{
+			name:      "input tokens per month",
+			dimension: InputTokensPerMonth,
+			limit:     ResourceLimit{SubjectKey: "t9", InputTokensPerMonth: 10},
+			request:   ResourceRequest{InputTokens: 20},
+		},
+		{
+			name:      "output tokens per month",
+			dimension: OutputTokensPerMonth,
+			limit:     ResourceLimit{SubjectKey: "t10", OutputTokensPerMonth: 10},
 			request:   ResourceRequest{OutputTokens: 20},
 		},
 	}
@@ -144,14 +157,17 @@ func TestResourceLimitFromOrgLimitCarriesInputOutputFields(t *testing.T) {
 	t.Parallel()
 
 	orgLimit := OrgLimit{
+		TokensPerMonth:        9,
 		InputTokensPerSecond:  1,
 		InputTokensPerHour:    2,
 		InputTokensPerDay:     3,
 		InputTokensPerWeek:    4,
+		InputTokensPerMonth:   10,
 		OutputTokensPerSecond: 5,
 		OutputTokensPerHour:   6,
 		OutputTokensPerDay:    7,
 		OutputTokensPerWeek:   8,
+		OutputTokensPerMonth:  11,
 	}
 
 	got := ResourceLimitFromOrgLimit(orgLimit)
@@ -160,16 +176,64 @@ func TestResourceLimitFromOrgLimitCarriesInputOutputFields(t *testing.T) {
 		SubjectKey:            got.SubjectKey,
 		SubjectRepr:           got.SubjectRepr,
 		Level:                 LevelOrg,
+		TokensPerMonth:        9,
 		InputTokensPerSecond:  1,
 		InputTokensPerHour:    2,
 		InputTokensPerDay:     3,
 		InputTokensPerWeek:    4,
+		InputTokensPerMonth:   10,
 		OutputTokensPerSecond: 5,
 		OutputTokensPerHour:   6,
 		OutputTokensPerDay:    7,
 		OutputTokensPerWeek:   8,
+		OutputTokensPerMonth:  11,
 	}
 	if got != want {
 		t.Fatalf("resource limit = %#v, want %#v", got, want)
+	}
+}
+
+// TestDoResourceLimitMonthlyLimitResetsAfterPeriodElapses answers "how do we test a
+// month-long window without waiting a month": the limiter's clock is injectable, so
+// simulating expiry is a single fake-clock advance, exactly like second/week already
+// are in ratelimit_test.go's TestBucketsRefillOverTime.
+func TestDoResourceLimitMonthlyLimitResetsAfterPeriodElapses(t *testing.T) {
+	t.Parallel()
+
+	store := newFakeStore()
+	now := int64(1_700_000_000_000)
+	limiter, err := NewRateLimiter(store, withClock(func() int64 { return now }))
+	if err != nil {
+		t.Fatalf("new rate limiter: %v", err)
+	}
+
+	limit := ResourceLimit{SubjectKey: "monthly", InputTokensPerMonth: 100}
+	request := ResourceRequest{InputTokens: 100}
+
+	results, err := ConsumeResourceLimit(context.Background(), limiter, limit, request, "req-1")
+	if err != nil {
+		t.Fatalf("consume resource limit: %v", err)
+	}
+	if !results[InputTokensPerMonth].Allowed() {
+		t.Fatal("first request within limit was disallowed")
+	}
+
+	results, err = ConsumeResourceLimit(context.Background(), limiter, limit, request, "req-2")
+	if err != nil {
+		t.Fatalf("consume resource limit: %v", err)
+	}
+	if results[InputTokensPerMonth].Allowed() {
+		t.Fatal("second request over the exhausted monthly bucket was allowed")
+	}
+
+	// "Wait" 31 days, instantly, via the fake clock.
+	now += int64((31 * 24 * time.Hour) / time.Millisecond)
+
+	results, err = ConsumeResourceLimit(context.Background(), limiter, limit, request, "req-3")
+	if err != nil {
+		t.Fatalf("consume resource limit: %v", err)
+	}
+	if !results[InputTokensPerMonth].Allowed() {
+		t.Fatal("request after the monthly period elapsed was still disallowed")
 	}
 }

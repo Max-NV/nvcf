@@ -596,14 +596,25 @@ func TestParseTokenRateLimit(t *testing.T) {
 			want: parsedTokenRateLimit{tokensPerWeek: 500000},
 		},
 		{
+			name: "month only",
+			raw:  "2000000-MO",
+			want: parsedTokenRateLimit{tokensPerMonth: 2000000},
+		},
+		{
+			name: "minute and month",
+			raw:  "9000-M,2000000-MO",
+			want: parsedTokenRateLimit{tokensPerMinute: 9000, tokensPerMonth: 2000000},
+		},
+		{
 			name: "combined all levels",
-			raw:  "100-S,9000-M,25000-H,100000-D,500000-W",
+			raw:  "100-S,9000-M,25000-H,100000-D,500000-W,2000000-MO",
 			want: parsedTokenRateLimit{
 				tokensPerSecond: 100,
 				tokensPerMinute: 9000,
 				tokensPerHour:   25000,
 				tokensPerDay:    100000,
 				tokensPerWeek:   500000,
+				tokensPerMonth:  2000000,
 			},
 		},
 		{
@@ -655,6 +666,11 @@ func TestParseTokenRateLimit(t *testing.T) {
 			name:    "duplicate week level",
 			raw:     "500000-W,600000-W",
 			wantErr: "duplicate week token rate limit",
+		},
+		{
+			name:    "duplicate month level",
+			raw:     "2000000-MO,3000000-MO",
+			wantErr: "duplicate month token rate limit",
 		},
 	}
 
@@ -953,6 +969,42 @@ func TestCallerLimitResolverParsesInputOutputTokenLimitLevels(t *testing.T) {
 	}
 }
 
+func TestCallerLimitResolverParsesMonthTokenLimitLevels(t *testing.T) {
+	t.Parallel()
+
+	limits, err := CallerLimitResolver{}.ResolveLimits(
+		context.Background(),
+		&requestctx.RequestContext{
+			OrgID:      "nca-456",
+			RoutingKey: "fn-chat",
+			Model:      "company-name/model-name",
+			ModelSpecs: map[string]nvcf.ModelSpec{
+				"company-name/model-name": {
+					TokenRateLimit:       "5000000-MO",
+					InputTokenRateLimit:  "3000000-MO",
+					OutputTokenRateLimit: "1000000-MO",
+				},
+			},
+		},
+		"/v1/chat/completions",
+	)
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+	if len(limits) != 1 {
+		t.Fatalf("len(limits) = %d, want 1", len(limits))
+	}
+	if limits[0].TokensPerMonth != 5000000 {
+		t.Fatalf("tokens per month = %d, want 5000000", limits[0].TokensPerMonth)
+	}
+	if limits[0].InputTokensPerMonth != 3000000 {
+		t.Fatalf("input tokens per month = %d, want 3000000", limits[0].InputTokensPerMonth)
+	}
+	if limits[0].OutputTokensPerMonth != 1000000 {
+		t.Fatalf("output tokens per month = %d, want 1000000", limits[0].OutputTokensPerMonth)
+	}
+}
+
 func TestChooseTokenStatsPrefersCombinedTokensOverInputOutput(t *testing.T) {
 	t.Parallel()
 
@@ -1074,6 +1126,29 @@ func TestChooseTokenStatsReturnsFalseWhenNoResults(t *testing.T) {
 	_, _, _, ok := chooseTokenStats(map[ratelimit.LimitDimension]*ratelimit.RateLimitResult{})
 	if ok {
 		t.Fatal("expected ok = false for empty results")
+	}
+}
+
+func TestChooseTokenStatsIncludesMonthInInputOutputPeriods(t *testing.T) {
+	t.Parallel()
+
+	results := map[ratelimit.LimitDimension]*ratelimit.RateLimitResult{
+		ratelimit.InputTokensPerMonth: {
+			CurrentValue: 1000,
+			Requested:    1000,
+			RateLimit:    ratelimit.RateLimit{Limit: 1000, Period: 30 * 24 * time.Hour},
+		},
+	}
+
+	limit, remaining, _, ok := chooseTokenStats(results)
+	if !ok {
+		t.Fatal("expected a result")
+	}
+	if limit != 1000 {
+		t.Fatalf("limit = %d, want 1000", limit)
+	}
+	if remaining != 0 {
+		t.Fatalf("remaining = %d, want 0", remaining)
 	}
 }
 
