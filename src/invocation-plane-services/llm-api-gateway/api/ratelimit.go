@@ -115,16 +115,19 @@ func (r CallerLimitResolver) ResolveLimits(
 		TokensPerHour:         parsedTokenLimits.tokensPerHour,
 		TokensPerDay:          parsedTokenLimits.tokensPerDay,
 		TokensPerWeek:         parsedTokenLimits.tokensPerWeek,
+		TokensPerMonth:        parsedTokenLimits.tokensPerMonth,
 		InputTokensPerSecond:  parsedInputTokenLimits.tokensPerSecond,
 		InputTokensPerMinute:  parsedInputTokenLimits.tokensPerMinute,
 		InputTokensPerHour:    parsedInputTokenLimits.tokensPerHour,
 		InputTokensPerDay:     parsedInputTokenLimits.tokensPerDay,
 		InputTokensPerWeek:    parsedInputTokenLimits.tokensPerWeek,
+		InputTokensPerMonth:   parsedInputTokenLimits.tokensPerMonth,
 		OutputTokensPerSecond: parsedOutputTokenLimits.tokensPerSecond,
 		OutputTokensPerMinute: parsedOutputTokenLimits.tokensPerMinute,
 		OutputTokensPerHour:   parsedOutputTokenLimits.tokensPerHour,
 		OutputTokensPerDay:    parsedOutputTokenLimits.tokensPerDay,
 		OutputTokensPerWeek:   parsedOutputTokenLimits.tokensPerWeek,
+		OutputTokensPerMonth:  parsedOutputTokenLimits.tokensPerMonth,
 	}
 
 	switch {
@@ -147,6 +150,7 @@ type parsedTokenRateLimit struct {
 	tokensPerHour   int64
 	tokensPerDay    int64
 	tokensPerWeek   int64
+	tokensPerMonth  int64
 }
 
 func (p parsedTokenRateLimit) empty() bool {
@@ -165,6 +169,7 @@ func parseTokenRateLimit(raw string) (parsedTokenRateLimit, error) {
 		sawTokensPerHour   bool
 		sawTokensPerDay    bool
 		sawTokensPerWeek   bool
+		sawTokensPerMonth  bool
 	)
 	for _, fragment := range strings.Split(raw, ",") {
 		fragment = strings.TrimSpace(fragment)
@@ -218,6 +223,12 @@ func parseTokenRateLimit(raw string) (parsedTokenRateLimit, error) {
 			}
 			sawTokensPerWeek = true
 			parsed.tokensPerWeek = value
+		case "MO":
+			if sawTokensPerMonth {
+				return parsedTokenRateLimit{}, fmt.Errorf("duplicate month token rate limit")
+			}
+			sawTokensPerMonth = true
+			parsed.tokensPerMonth = value
 		default:
 			return parsedTokenRateLimit{}, fmt.Errorf("unsupported token rate limit level %q", levelPart)
 		}
@@ -719,6 +730,7 @@ func chooseTokenStats(
 		ratelimit.TokensPerHour,
 		ratelimit.TokensPerDay,
 		ratelimit.TokensPerWeek,
+		ratelimit.TokensPerMonth,
 	} {
 		if result := results[dim]; result != nil {
 			return result.LimitValue(), result.RemainingValue(), result.ResetAfter(), true
@@ -737,6 +749,7 @@ func chooseTokenStats(
 		{ratelimit.InputTokensPerHour, ratelimit.OutputTokensPerHour},
 		{ratelimit.InputTokensPerDay, ratelimit.OutputTokensPerDay},
 		{ratelimit.InputTokensPerWeek, ratelimit.OutputTokensPerWeek},
+		{ratelimit.InputTokensPerMonth, ratelimit.OutputTokensPerMonth},
 	} {
 		var (
 			hasLimit   bool

@@ -845,9 +845,9 @@ func validateLLMTokenRateLimit(fieldName, raw string) error {
 		}
 
 		switch unit {
-		case "S", "M", "H", "D", "W":
+		case "S", "M", "H", "D", "W", "MO":
 		default:
-			return fmt.Errorf("invalid %s unit %q: expected S, M, H, D, or W", fieldName, unit)
+			return fmt.Errorf("invalid %s unit %q: expected S, M, H, D, W, or MO", fieldName, unit)
 		}
 		if seenUnits[unit] {
 			return fmt.Errorf("invalid %s: duplicate %s unit", fieldName, unit)
