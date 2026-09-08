@@ -83,4 +83,54 @@ class LlmConfigValidatorTest {
                 .hasMessageContaining("tokenRateLimit")
                 .hasMessageContaining(MODEL);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"100000-S", "10-M", "5-H", "1-D", "2-W", "10-M,5-S"})
+    void validInputTokenRateLimitsAccepted(String inputTokenRateLimit) {
+        assertThatCode(() -> LlmConfigValidator.validateInputTokenRateLimit(MODEL, inputTokenRateLimit))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void blankInputTokenRateLimitAccepted(String inputTokenRateLimit) {
+        assertThatCode(() -> LlmConfigValidator.validateInputTokenRateLimit(MODEL, inputTokenRateLimit))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"20", "20-X", "0-S", "10-M,5-M"})
+    void invalidInputTokenRateLimitsRejected(String inputTokenRateLimit) {
+        assertThatThrownBy(
+                () -> LlmConfigValidator.validateInputTokenRateLimit(MODEL, inputTokenRateLimit))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("inputTokenRateLimit")
+                .hasMessageContaining(MODEL);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"100000-S", "10-M", "5-H", "1-D", "2-W", "10-M,5-S"})
+    void validOutputTokenRateLimitsAccepted(String outputTokenRateLimit) {
+        assertThatCode(() -> LlmConfigValidator.validateOutputTokenRateLimit(MODEL, outputTokenRateLimit))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = {"   "})
+    void blankOutputTokenRateLimitAccepted(String outputTokenRateLimit) {
+        assertThatCode(() -> LlmConfigValidator.validateOutputTokenRateLimit(MODEL, outputTokenRateLimit))
+                .doesNotThrowAnyException();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"20", "20-X", "0-S", "10-M,5-M"})
+    void invalidOutputTokenRateLimitsRejected(String outputTokenRateLimit) {
+        assertThatThrownBy(
+                () -> LlmConfigValidator.validateOutputTokenRateLimit(MODEL, outputTokenRateLimit))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("outputTokenRateLimit")
+                .hasMessageContaining(MODEL);
+    }
 }

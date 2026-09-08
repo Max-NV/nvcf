@@ -42,7 +42,7 @@ public final class LlmConfigValidator {
                     + "values are [power-of-two, wait-and-widen, round-robin, random, pulsar, "
                     + "pulsar-wait-and-widen, groq-multiregion, pulsar-multiregion]";
     private static final String MESG_INVALID_TOKEN_RATE_LIMIT =
-            "Invalid request: 'llmConfig.tokenRateLimit' for model '%s' is invalid; expected "
+            "Invalid request: 'llmConfig.%s' for model '%s' is invalid; expected "
                     + "comma-separated '<positiveInteger>-<unit>' entries with unit in [S, M, H, D, W] "
                     + "(for example '100000-S' or '10-M,5-S')";
 
@@ -62,11 +62,28 @@ public final class LlmConfigValidator {
 
     /** Rejects a tokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
     public static void validateTokenRateLimit(String modelName, @Nullable String tokenRateLimit) {
-        if (StringUtils.isBlank(tokenRateLimit)) {
+        validateTokenRateLimitField(modelName, "tokenRateLimit", tokenRateLimit);
+    }
+
+    /** Rejects an inputTokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
+    public static void validateInputTokenRateLimit(
+            String modelName, @Nullable String inputTokenRateLimit) {
+        validateTokenRateLimitField(modelName, "inputTokenRateLimit", inputTokenRateLimit);
+    }
+
+    /** Rejects an outputTokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
+    public static void validateOutputTokenRateLimit(
+            String modelName, @Nullable String outputTokenRateLimit) {
+        validateTokenRateLimitField(modelName, "outputTokenRateLimit", outputTokenRateLimit);
+    }
+
+    private static void validateTokenRateLimitField(
+            String modelName, String fieldName, @Nullable String value) {
+        if (StringUtils.isBlank(value)) {
             return;
         }
-        if (!TOKEN_RATE_LIMIT_PATTERN.matcher(tokenRateLimit).matches()) {
-            var mesg = MESG_INVALID_TOKEN_RATE_LIMIT.formatted(modelName);
+        if (!TOKEN_RATE_LIMIT_PATTERN.matcher(value).matches()) {
+            var mesg = MESG_INVALID_TOKEN_RATE_LIMIT.formatted(fieldName, modelName);
             log.error(mesg);
             throw new BadRequestException(mesg);
         }
