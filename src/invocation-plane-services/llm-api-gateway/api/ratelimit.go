@@ -82,7 +82,10 @@ func (r CallerLimitResolver) ResolveLimits(
 	}
 
 	spec, ok := reqCtx.ModelSpecs[reqCtx.Model]
-	if !ok || spec.TokenRateLimit == "" {
+	if !ok {
+		return nil, nil
+	}
+	if spec.TokenRateLimit == "" && spec.InputTokenRateLimit == "" && spec.OutputTokenRateLimit == "" {
 		return nil, nil
 	}
 
@@ -90,20 +93,38 @@ func (r CallerLimitResolver) ResolveLimits(
 	if err != nil {
 		return nil, fmt.Errorf("parse token rate limit for model %q: %w", reqCtx.Model, err)
 	}
+	parsedInputTokenLimits, err := parseTokenRateLimit(spec.InputTokenRateLimit)
+	if err != nil {
+		return nil, fmt.Errorf("parse input token rate limit for model %q: %w", reqCtx.Model, err)
+	}
+	parsedOutputTokenLimits, err := parseTokenRateLimit(spec.OutputTokenRateLimit)
+	if err != nil {
+		return nil, fmt.Errorf("parse output token rate limit for model %q: %w", reqCtx.Model, err)
+	}
 
-	if parsedTokenLimits.empty() {
+	if parsedTokenLimits.empty() && parsedInputTokenLimits.empty() && parsedOutputTokenLimits.empty() {
 		return nil, nil
 	}
 
 	baseLimit := ratelimit.ResourceLimit{
-		SubjectKey:      "routing_key:" + reqCtx.RoutingKey,
-		SubjectRepr:     "routing key `" + reqCtx.RoutingKey + "`",
-		Level:           ratelimit.LevelFunction,
-		TokensPerSecond: parsedTokenLimits.tokensPerSecond,
-		TokensPerMinute: parsedTokenLimits.tokensPerMinute,
-		TokensPerHour:   parsedTokenLimits.tokensPerHour,
-		TokensPerDay:    parsedTokenLimits.tokensPerDay,
-		TokensPerWeek:   parsedTokenLimits.tokensPerWeek,
+		SubjectKey:            "routing_key:" + reqCtx.RoutingKey,
+		SubjectRepr:           "routing key `" + reqCtx.RoutingKey + "`",
+		Level:                 ratelimit.LevelFunction,
+		TokensPerSecond:       parsedTokenLimits.tokensPerSecond,
+		TokensPerMinute:       parsedTokenLimits.tokensPerMinute,
+		TokensPerHour:         parsedTokenLimits.tokensPerHour,
+		TokensPerDay:          parsedTokenLimits.tokensPerDay,
+		TokensPerWeek:         parsedTokenLimits.tokensPerWeek,
+		InputTokensPerSecond:  parsedInputTokenLimits.tokensPerSecond,
+		InputTokensPerMinute:  parsedInputTokenLimits.tokensPerMinute,
+		InputTokensPerHour:    parsedInputTokenLimits.tokensPerHour,
+		InputTokensPerDay:     parsedInputTokenLimits.tokensPerDay,
+		InputTokensPerWeek:    parsedInputTokenLimits.tokensPerWeek,
+		OutputTokensPerSecond: parsedOutputTokenLimits.tokensPerSecond,
+		OutputTokensPerMinute: parsedOutputTokenLimits.tokensPerMinute,
+		OutputTokensPerHour:   parsedOutputTokenLimits.tokensPerHour,
+		OutputTokensPerDay:    parsedOutputTokenLimits.tokensPerDay,
+		OutputTokensPerWeek:   parsedOutputTokenLimits.tokensPerWeek,
 	}
 
 	switch {
@@ -704,29 +725,37 @@ func chooseTokenStats(
 		}
 	}
 
-	var (
-		hasLimit   bool
-		limit      int64
-		remaining  int64
-		resetAfter time.Duration
-	)
-	for _, dim := range []ratelimit.LimitDimension{
-		ratelimit.InputTokensPerMinute,
-		ratelimit.OutputTokensPerMinute,
+	for _, pair := range [][2]ratelimit.LimitDimension{
+		{ratelimit.InputTokensPerSecond, ratelimit.OutputTokensPerSecond},
+		{ratelimit.InputTokensPerMinute, ratelimit.OutputTokensPerMinute},
+		{ratelimit.InputTokensPerHour, ratelimit.OutputTokensPerHour},
+		{ratelimit.InputTokensPerDay, ratelimit.OutputTokensPerDay},
+		{ratelimit.InputTokensPerWeek, ratelimit.OutputTokensPerWeek},
 	} {
-		result := results[dim]
-		if result == nil {
-			continue
+		var (
+			hasLimit   bool
+			limit      int64
+			remaining  int64
+			resetAfter time.Duration
+		)
+		for _, dim := range pair {
+			result := results[dim]
+			if result == nil {
+				continue
+			}
+			hasLimit = true
+			limit += result.LimitValue()
+			remaining += result.RemainingValue()
+			if result.ResetAfter() > resetAfter {
+				resetAfter = result.ResetAfter()
+			}
 		}
-		hasLimit = true
-		limit += result.LimitValue()
-		remaining += result.RemainingValue()
-		if result.ResetAfter() > resetAfter {
-			resetAfter = result.ResetAfter()
+		if hasLimit {
+			return limit, remaining, resetAfter, true
 		}
 	}
 
-	return limit, remaining, resetAfter, hasLimit
+	return 0, 0, 0, false
 }
 
 func headerDuration(d time.Duration) time.Duration {
