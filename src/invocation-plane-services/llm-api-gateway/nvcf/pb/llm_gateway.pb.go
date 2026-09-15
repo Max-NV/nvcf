@@ -96,9 +96,14 @@ type AuthLlmInvokeResponse struct {
 	ModelSpecs        map[string]*AuthLlmInvokeResponse_ModelSpec `protobuf:"bytes,4,rep,name=modelSpecs,proto3" json:"modelSpecs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Resolved caller priority; lower value = higher priority, 0 is highest.
 	// Unset when no priority config applies; absent is not 0, check hasPriority().
-	Priority      *uint32 `protobuf:"varint,5,opt,name=priority,proto3,oneof" json:"priority,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Priority *uint32 `protobuf:"varint,5,opt,name=priority,proto3,oneof" json:"priority,omitempty"`
+	// Per-account tier token rate limit, resolved from UAM by ncaId (not tied to any one
+	// function). Enforced as an independent, function-agnostic bucket alongside any
+	// per-function limits in ModelSpec. Absent when the caller has no tier limit.
+	TierInputTokenRateLimit  *string `protobuf:"bytes,6,opt,name=tierInputTokenRateLimit,proto3,oneof" json:"tierInputTokenRateLimit,omitempty"`
+	TierOutputTokenRateLimit *string `protobuf:"bytes,7,opt,name=tierOutputTokenRateLimit,proto3,oneof" json:"tierOutputTokenRateLimit,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *AuthLlmInvokeResponse) Reset() {
@@ -164,6 +169,20 @@ func (x *AuthLlmInvokeResponse) GetPriority() uint32 {
 		return *x.Priority
 	}
 	return 0
+}
+
+func (x *AuthLlmInvokeResponse) GetTierInputTokenRateLimit() string {
+	if x != nil && x.TierInputTokenRateLimit != nil {
+		return *x.TierInputTokenRateLimit
+	}
+	return ""
+}
+
+func (x *AuthLlmInvokeResponse) GetTierOutputTokenRateLimit() string {
+	if x != nil && x.TierOutputTokenRateLimit != nil {
+		return *x.TierOutputTokenRateLimit
+	}
+	return ""
 }
 
 type AuthLlmWorkerRequest struct {
@@ -339,7 +358,7 @@ const file_llm_gateway_proto_rawDesc = "" +
 	"\x18clientAuthorizationToken\x18\x01 \x01(\tR\x18clientAuthorizationToken\x12\x1e\n" +
 	"\n" +
 	"routingKey\x18\x02 \x01(\tR\n" +
-	"routingKey\"\xbc\x06\n" +
+	"routingKey\"\xf5\a\n" +
 	"\x15AuthLlmInvokeResponse\x12\x1e\n" +
 	"\n" +
 	"routingKey\x18\x01 \x01(\tR\n" +
@@ -349,7 +368,9 @@ const file_llm_gateway_proto_rawDesc = "" +
 	"\n" +
 	"modelSpecs\x18\x04 \x03(\v22.llm_gateway.AuthLlmInvokeResponse.ModelSpecsEntryR\n" +
 	"modelSpecs\x12\x1f\n" +
-	"\bpriority\x18\x05 \x01(\rH\x00R\bpriority\x88\x01\x01\x1a>\n" +
+	"\bpriority\x18\x05 \x01(\rH\x00R\bpriority\x88\x01\x01\x12=\n" +
+	"\x17tierInputTokenRateLimit\x18\x06 \x01(\tH\x01R\x17tierInputTokenRateLimit\x88\x01\x01\x12?\n" +
+	"\x18tierOutputTokenRateLimit\x18\a \x01(\tH\x02R\x18tierOutputTokenRateLimit\x88\x01\x01\x1a>\n" +
 	"\x10AuthContextEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1ak\n" +
@@ -366,7 +387,9 @@ const file_llm_gateway_proto_rawDesc = "" +
 	"\x0e_routingMethodB\x16\n" +
 	"\x14_inputTokenRateLimitB\x17\n" +
 	"\x15_outputTokenRateLimitJ\x04\b\x03\x10\x04R\ttokenizerB\v\n" +
-	"\t_priority\"8\n" +
+	"\t_priorityB\x1a\n" +
+	"\x18_tierInputTokenRateLimitB\x1b\n" +
+	"\x19_tierOutputTokenRateLimit\"8\n" +
 	"\x14AuthLlmWorkerRequest\x12 \n" +
 	"\vworkerToken\x18\x01 \x01(\tR\vworkerToken\"7\n" +
 	"\x15AuthLlmWorkerResponse\x12\x1e\n" +

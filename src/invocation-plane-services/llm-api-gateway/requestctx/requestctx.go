@@ -39,4 +39,9 @@ type RequestContext struct {
 	// when no priority config applies. Lower value is higher priority, 0 is
 	// highest. Forwarded to Stargate as the X-Priority header when set.
 	Priority *uint32
+	// TierInputTokenRateLimit and TierOutputTokenRateLimit are the per-account
+	// tier rate limit resolved by NVCF API from UAM, keyed by OrgID (ncaId)
+	// rather than any one function. Empty when the caller has no tier limit.
+	TierInputTokenRateLimit  string
+	TierOutputTokenRateLimit string
 }

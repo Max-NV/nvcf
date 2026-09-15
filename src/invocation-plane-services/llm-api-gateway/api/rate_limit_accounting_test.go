@@ -1005,6 +1005,127 @@ func TestCallerLimitResolverParsesMonthTokenLimitLevels(t *testing.T) {
 	}
 }
 
+func TestTierLimitResolverIsScopedByNcaIdOnly(t *testing.T) {
+	t.Parallel()
+
+	limits, err := TierLimitResolver{}.ResolveLimits(
+		context.Background(),
+		&requestctx.RequestContext{
+			OrgID:                    "nca-456",
+			RoutingKey:               "fn-chat",
+			TierInputTokenRateLimit:  "5000-M",
+			TierOutputTokenRateLimit: "1000-M",
+		},
+		"/v1/chat/completions",
+	)
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+	if len(limits) != 1 {
+		t.Fatalf("len(limits) = %d, want 1", len(limits))
+	}
+	if limits[0].SubjectKey != "nvcf:nca-456" {
+		t.Fatalf("subject key = %q, want nvcf:nca-456 (no routing_key segment)", limits[0].SubjectKey)
+	}
+	if limits[0].InputTokensPerMinute != 5000 {
+		t.Fatalf("input tokens per minute = %d, want 5000", limits[0].InputTokensPerMinute)
+	}
+	if limits[0].OutputTokensPerMinute != 1000 {
+		t.Fatalf("output tokens per minute = %d, want 1000", limits[0].OutputTokensPerMinute)
+	}
+}
+
+func TestTierLimitResolverReturnsNoLimitWhenUnconfigured(t *testing.T) {
+	t.Parallel()
+
+	limits, err := TierLimitResolver{}.ResolveLimits(
+		context.Background(),
+		&requestctx.RequestContext{OrgID: "nca-456", RoutingKey: "fn-chat"},
+		"/v1/chat/completions",
+	)
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+	if len(limits) != 0 {
+		t.Fatalf("len(limits) = %d, want 0", len(limits))
+	}
+}
+
+func TestTierLimitResolverDifferentFunctionsShareOneBucket(t *testing.T) {
+	t.Parallel()
+
+	reqCtx := &requestctx.RequestContext{
+		OrgID:                   "nca-456",
+		TierInputTokenRateLimit: "5000-M",
+	}
+
+	reqCtx.RoutingKey = "fn-a"
+	limitsForFnA, err := TierLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+	reqCtx.RoutingKey = "fn-b"
+	limitsForFnB, err := TierLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+
+	if limitsForFnA[0].SubjectKey != limitsForFnB[0].SubjectKey {
+		t.Fatalf("tier bucket differs by function: %q vs %q",
+			limitsForFnA[0].SubjectKey, limitsForFnB[0].SubjectKey)
+	}
+}
+
+func TestCompositeLimitResolverCombinesPerFunctionAndTierLimits(t *testing.T) {
+	t.Parallel()
+
+	resolver := CompositeLimitResolver{CallerLimitResolver{}, TierLimitResolver{}}
+	limits, err := resolver.ResolveLimits(
+		context.Background(),
+		&requestctx.RequestContext{
+			OrgID:                    "nca-456",
+			RoutingKey:               "fn-chat",
+			Model:                    "company-name/model-name",
+			TierInputTokenRateLimit:  "5000-M",
+			TierOutputTokenRateLimit: "1000-M",
+			ModelSpecs: map[string]nvcf.ModelSpec{
+				"company-name/model-name": {
+					TokenRateLimit: "9000-M",
+				},
+			},
+		},
+		"/v1/chat/completions",
+	)
+	if err != nil {
+		t.Fatalf("resolve limits: %v", err)
+	}
+	if len(limits) != 2 {
+		t.Fatalf("len(limits) = %d, want 2 (one per-function, one tier)", len(limits))
+	}
+
+	var sawFunctionScoped, sawTierScoped bool
+	for _, limit := range limits {
+		switch limit.SubjectKey {
+		case "nvcf:nca-456":
+			sawTierScoped = true
+			if limit.InputTokensPerMinute != 5000 {
+				t.Fatalf("tier input tokens per minute = %d, want 5000", limit.InputTokensPerMinute)
+			}
+		case rateLimitSubjectKey("nca-456", "", "fn-chat"):
+			sawFunctionScoped = true
+			if limit.TokensPerMinute != 9000 {
+				t.Fatalf("function tokens per minute = %d, want 9000", limit.TokensPerMinute)
+			}
+		}
+	}
+	if !sawFunctionScoped {
+		t.Fatal("missing per-function limit")
+	}
+	if !sawTierScoped {
+		t.Fatal("missing tier limit")
+	}
+}
+
 func TestChooseTokenStatsPrefersCombinedTokensOverInputOutput(t *testing.T) {
 	t.Parallel()
 

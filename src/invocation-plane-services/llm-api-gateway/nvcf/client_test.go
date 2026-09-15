@@ -116,6 +116,12 @@ func TestGRPCClientAuthorizeInvocation(t *testing.T) {
 	if len(spec.URIs) != 1 || spec.URIs[0] != "https://example.com/model" {
 		t.Fatalf("uris = %#v, want [https://example.com/model]", spec.URIs)
 	}
+	if authResponse.TierInputTokenRateLimit != "9-M" {
+		t.Fatalf("tier input token rate limit = %q, want 9-M", authResponse.TierInputTokenRateLimit)
+	}
+	if authResponse.TierOutputTokenRateLimit != "4-M" {
+		t.Fatalf("tier output token rate limit = %q, want 4-M", authResponse.TierOutputTokenRateLimit)
+	}
 	if authResponse.Priority != nil {
 		t.Fatalf("priority = %d, want unset", *authResponse.Priority)
 	}
@@ -406,9 +412,11 @@ func (s *stubInvocationService) AuthLlmInvocation(
 	}
 
 	resp := &llmgatewaypb.AuthLlmInvokeResponse{
-		RoutingKey:        "fn-123",
-		ClientAuthSubject: clientAuthID,
-		Priority:          s.priority,
+		RoutingKey:               "fn-123",
+		ClientAuthSubject:        clientAuthID,
+		Priority:                 s.priority,
+		TierInputTokenRateLimit:  stringPtr("9-M"),
+		TierOutputTokenRateLimit: stringPtr("4-M"),
 		ModelSpecs: map[string]*llmgatewaypb.AuthLlmInvokeResponse_ModelSpec{
 			"gateway-model": {
 				Uris:                 []string{"https://example.com/model"},

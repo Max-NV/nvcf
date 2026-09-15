@@ -144,6 +144,58 @@ func (r CallerLimitResolver) ResolveLimits(
 	}
 }
 
+// TierLimitResolver applies the per-account tier token rate limit UAM resolves by ncaId.
+// Unlike CallerLimitResolver, the bucket is scoped by ncaId alone (no routing_key segment),
+// so it is shared across every function the account invokes rather than reset per function.
+type TierLimitResolver struct{}
+
+func (r TierLimitResolver) ResolveLimits(
+	_ context.Context,
+	reqCtx *requestctx.RequestContext,
+	_ string,
+) ([]ratelimit.ResourceLimit, error) {
+	_ = r
+
+	if reqCtx == nil || reqCtx.OrgID == "" {
+		return nil, nil
+	}
+	if reqCtx.TierInputTokenRateLimit == "" && reqCtx.TierOutputTokenRateLimit == "" {
+		return nil, nil
+	}
+
+	parsedInputTokenLimits, err := parseTokenRateLimit(reqCtx.TierInputTokenRateLimit)
+	if err != nil {
+		return nil, fmt.Errorf("parse tier input token rate limit: %w", err)
+	}
+	parsedOutputTokenLimits, err := parseTokenRateLimit(reqCtx.TierOutputTokenRateLimit)
+	if err != nil {
+		return nil, fmt.Errorf("parse tier output token rate limit: %w", err)
+	}
+	if parsedInputTokenLimits.empty() && parsedOutputTokenLimits.empty() {
+		return nil, nil
+	}
+
+	return []ratelimit.ResourceLimit{
+		{
+			SubjectKey:            "nvcf:" + reqCtx.OrgID,
+			SubjectRepr:           "tier account `" + reqCtx.OrgID + "`",
+			Level:                 ratelimit.LevelOrg,
+			InputTokensPerSecond:  parsedInputTokenLimits.tokensPerSecond,
+			InputTokensPerMinute:  parsedInputTokenLimits.tokensPerMinute,
+			InputTokensPerHour:    parsedInputTokenLimits.tokensPerHour,
+			InputTokensPerDay:     parsedInputTokenLimits.tokensPerDay,
+			InputTokensPerWeek:    parsedInputTokenLimits.tokensPerWeek,
+			InputTokensPerMonth:   parsedInputTokenLimits.tokensPerMonth,
+			OutputTokensPerSecond: parsedOutputTokenLimits.tokensPerSecond,
+			OutputTokensPerMinute: parsedOutputTokenLimits.tokensPerMinute,
+			OutputTokensPerHour:   parsedOutputTokenLimits.tokensPerHour,
+			OutputTokensPerDay:    parsedOutputTokenLimits.tokensPerDay,
+			OutputTokensPerWeek:   parsedOutputTokenLimits.tokensPerWeek,
+			OutputTokensPerMonth:  parsedOutputTokenLimits.tokensPerMonth,
+		},
+	}, nil
+}
+
 type parsedTokenRateLimit struct {
 	tokensPerSecond int64
 	tokensPerMinute int64

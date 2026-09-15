@@ -40,6 +40,11 @@ type InvocationAuthResponse struct {
 	// Priority is the caller priority resolved by NVCF API, or nil when no
 	// priority config applies. Lower value is higher priority, 0 is highest.
 	Priority *uint32
+	// TierInputTokenRateLimit and TierOutputTokenRateLimit are the per-account
+	// tier rate limit resolved by UAM, keyed by ncaId rather than any one
+	// function. Empty when the caller has no tier limit.
+	TierInputTokenRateLimit  string
+	TierOutputTokenRateLimit string
 }
 
 // clone returns a copy that shares no mutable state with the receiver, so a
