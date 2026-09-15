@@ -68,28 +68,11 @@ public final class LlmConfigValidator {
 
     /** Rejects a tokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
     public static void validateTokenRateLimit(String modelName, @Nullable String tokenRateLimit) {
-        validateTokenRateLimitField(modelName, "tokenRateLimit", tokenRateLimit);
-    }
-
-    /** Rejects an inputTokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
-    public static void validateInputTokenRateLimit(
-            String modelName, @Nullable String inputTokenRateLimit) {
-        validateTokenRateLimitField(modelName, "inputTokenRateLimit", inputTokenRateLimit);
-    }
-
-    /** Rejects an outputTokenRateLimit that is not '<positiveInteger>-<unit>' fragments. */
-    public static void validateOutputTokenRateLimit(
-            String modelName, @Nullable String outputTokenRateLimit) {
-        validateTokenRateLimitField(modelName, "outputTokenRateLimit", outputTokenRateLimit);
-    }
-
-    private static void validateTokenRateLimitField(
-            String modelName, String fieldName, @Nullable String value) {
-        if (StringUtils.isBlank(value)) {
+        if (StringUtils.isBlank(tokenRateLimit)) {
             return;
         }
-        if (!TOKEN_RATE_LIMIT_PATTERN.matcher(value).matches()) {
-            var mesg = MESG_INVALID_TOKEN_RATE_LIMIT.formatted(fieldName, modelName);
+        if (!TOKEN_RATE_LIMIT_PATTERN.matcher(tokenRateLimit).matches()) {
+            var mesg = MESG_INVALID_TOKEN_RATE_LIMIT.formatted("tokenRateLimit", modelName);
             log.error(mesg);
             throw new BadRequestException(mesg);
         }

@@ -37,14 +37,17 @@ message AuthLlmInvokeResponse {
     // Resolved caller priority; lower value = higher priority, 0 is highest.
     // Unset when no priority config applies - absent is not 0, check hasPriority().
     optional uint32 priority = 5;
+    // Per-account tier token rate limit, resolved from UAM by ncaId (not tied to any one
+    // function). Enforced by the gateway as an independent, function-agnostic bucket alongside
+    // any per-function limits in ModelSpec. Absent when the caller has no tier limit.
+    optional string tierInputTokenRateLimit = 6;
+    optional string tierOutputTokenRateLimit = 7;
 
     message ModelSpec {
         repeated string uris = 1;
         optional string tokenRateLimit = 2;
         optional string tokenizer = 3;
         optional string routingMethod = 4;
-        optional string inputTokenRateLimit = 5;
-        optional string outputTokenRateLimit = 6;
     }
 }
 

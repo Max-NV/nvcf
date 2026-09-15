@@ -46,6 +46,7 @@ import com.nvidia.nvcf.proto.llm_gateway.LlmGatewayGrpc;
 import com.nvidia.nvcf.rest.function.invocation.BaseFunctionInvocationTest;
 import com.nvidia.nvcf.rest.function.management.dto.LlmInvocationConfigDto;
 import com.nvidia.nvcf.rest.function.management.dto.PriorityDto;
+import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult.RateLimitAttributes;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult.Resource;
 import com.nvidia.nvcf.util.TestUtil;
 import io.grpc.ManagedChannelBuilder;
@@ -150,26 +151,6 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
     }
 
     @Test
-    void authLlmInvocation_inputOutputTokenRateLimits() {
-        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
-        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
-        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-8b-instruct",
-                List.of("/v1/chat/completions"), "1-M", null, null, "3-M,10-D", "2-M,5-D");
-
-        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
-        var clientToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt(TEST_CLIENT_SUBJECT,
-                                                          List.of(SCOPE_INVOKE_FUNCTION), 100);
-
-        var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
-
-        var modelSpec = response.getModelSpecsMap().get("meta/llama-3.1-8b-instruct");
-        assertThat(modelSpec.hasInputTokenRateLimit()).isTrue();
-        assertThat(modelSpec.getInputTokenRateLimit()).isEqualTo("3-M,10-D");
-        assertThat(modelSpec.hasOutputTokenRateLimit()).isTrue();
-        assertThat(modelSpec.getOutputTokenRateLimit()).isEqualTo("2-M,5-D");
-    }
-
-    @Test
     void authLlmInvocation_publicFunction() {
         setFunctionActive(TEST_PUBLIC_FUNCTION_ID_1, TEST_PUBLIC_FUNCTION_VERSION_ID_1);
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
@@ -222,6 +203,60 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         assertThat(modelSpec.hasTokenRateLimit()).isFalse();
         assertThat(modelSpec.hasTokenizer()).isFalse();
         assertThat(modelSpec.hasRoutingMethod()).isFalse();
+    }
+
+    @Test
+    void authLlmInvocation_tierRateLimitFromApiKeyAuth() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    List.of(new Resource("account-functions", "*")),
+                    List.of(SCOPE_INVOKE_FUNCTION), true,
+                    new RateLimitAttributes("NVDA", "5000-M", "1000-M", false));
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = "nvapi-stg-some-key";
+
+        var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
+
+        assertThat(response.hasTierInputTokenRateLimit()).isTrue();
+        assertThat(response.getTierInputTokenRateLimit()).isEqualTo("5000-M");
+        assertThat(response.hasTierOutputTokenRateLimit()).isTrue();
+        assertThat(response.getTierOutputTokenRateLimit()).isEqualTo("1000-M");
+    }
+
+    @Test
+    void authLlmInvocation_noTierRateLimitWhenApiKeyAuthCarriesNone() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    List.of(new Resource("account-functions", "*")),
+                    List.of(SCOPE_INVOKE_FUNCTION), true, null);
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = "nvapi-stg-some-key";
+
+        var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
+
+        assertThat(response.hasTierInputTokenRateLimit()).isFalse();
+        assertThat(response.hasTierOutputTokenRateLimit()).isFalse();
+    }
+
+    @Test
+    void authLlmInvocation_disabledTierRejectsInvocation() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    List.of(new Resource("account-functions", "*")),
+                    List.of(SCOPE_INVOKE_FUNCTION), true,
+                    new RateLimitAttributes("PUB", "5000-M", "1000-M", true));
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = "nvapi-stg-some-key";
+
+        assertThatThrownBy(() -> callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID))
+                .isInstanceOf(StatusRuntimeException.class)
+                .hasMessageContaining("PERMISSION_DENIED");
     }
 
     // ---------------------------------------------------------------------------

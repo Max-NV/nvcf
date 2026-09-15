@@ -21,6 +21,7 @@ import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_INVOCATION;
 import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_WORKER;
 
 import com.nvidia.boot.exceptions.BadRequestException;
+import com.nvidia.boot.exceptions.ForbiddenException;
 import com.nvidia.boot.exceptions.UnauthorizedException;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeRequest;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeResponse;
@@ -28,6 +29,7 @@ import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerRequest;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerResponse;
 import com.nvidia.nvcf.proto.llm_gateway.LlmGatewayGrpc.LlmGatewayImplBase;
 import com.nvidia.nvcf.service.account.AccountService;
+import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult;
 import com.nvidia.nvcf.service.function.FunctionLlmService;
 import com.nvidia.nvcf.service.function.FunctionMapperService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService;
@@ -43,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
 
 @Slf4j
@@ -89,6 +92,13 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         var functionModels = functionMapperService.toFunctionModels(
                 first.targetFunction().getModelSpecs());
         var resolvedPriority = resolvePriority(first);
+        var tierRateLimit = resolveTierRateLimit(authentication);
+
+        if (tierRateLimit.isPresent() && tierRateLimit.get().disable()) {
+            var mesg = "Function id '%s': caller is disabled".formatted(functionId);
+            log.error(mesg);
+            throw new ForbiddenException(mesg);
+        }
 
         var responseBuilder = AuthLlmInvokeResponse.newBuilder()
                 .setRoutingKey(request.getRoutingKey())
@@ -96,6 +106,14 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                 .putAuthContext("ncaId", first.ncaId());
 
         resolvedPriority.ifPresent(p -> responseBuilder.setPriority(p.intValue()));
+        tierRateLimit.ifPresent(rl -> {
+            if (rl.inputTokenRateLimit() != null) {
+                responseBuilder.setTierInputTokenRateLimit(rl.inputTokenRateLimit());
+            }
+            if (rl.outputTokenRateLimit() != null) {
+                responseBuilder.setTierOutputTokenRateLimit(rl.outputTokenRateLimit());
+            }
+        });
 
         for (var model : functionModels) {
             var modelSpecBuilder = AuthLlmInvokeResponse.ModelSpec.newBuilder();
@@ -105,12 +123,6 @@ public class GrpcLlmService extends LlmGatewayImplBase {
             }
             if (llmConfig != null && llmConfig.getTokenRateLimit() != null) {
                 modelSpecBuilder.setTokenRateLimit(llmConfig.getTokenRateLimit());
-            }
-            if (llmConfig != null && llmConfig.getInputTokenRateLimit() != null) {
-                modelSpecBuilder.setInputTokenRateLimit(llmConfig.getInputTokenRateLimit());
-            }
-            if (llmConfig != null && llmConfig.getOutputTokenRateLimit() != null) {
-                modelSpecBuilder.setOutputTokenRateLimit(llmConfig.getOutputTokenRateLimit());
             }
             if (llmConfig != null && llmConfig.getTokenizer() != null) {
                 modelSpecBuilder.setTokenizer(llmConfig.getTokenizer());
@@ -150,6 +162,24 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                     context.targetFunction().getFunctionVersionId()), exception);
             throw exception;
         }
+    }
+
+    /**
+     * Reads the per-account tier rate limit UAM already resolved and attached to the
+     * SAK/apikey evaluation result during {@link #validateInvokeFunctionAuth}, if the caller
+     * authenticated that way. NVCF does not compute or store this; absent when the caller has
+     * no tier limit, or authenticated by a mechanism that doesn't carry one.
+     */
+    private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveTierRateLimit(
+            Authentication authentication) {
+        if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
+            return Optional.empty();
+        }
+        if (principal.getAttribute(ApiKeyValidationResult.POLICY_RESULT_ATTRIBUTE)
+                instanceof ApiKeyValidationResult result) {
+            return Optional.ofNullable(result.rateLimit());
+        }
+        return Optional.empty();
     }
 
     private void validateLlmGatewayAuth(String requiredScope) {
