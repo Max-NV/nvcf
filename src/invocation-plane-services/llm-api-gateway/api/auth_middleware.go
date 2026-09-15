@@ -134,8 +134,8 @@ func applyInvocationAuth(
 	}
 	reqCtx.ModelSpecs = authResponse.ModelSpecs
 	reqCtx.Priority = authResponse.Priority
-	reqCtx.TierInputTokenRateLimit = authResponse.TierInputTokenRateLimit
-	reqCtx.TierOutputTokenRateLimit = authResponse.TierOutputTokenRateLimit
+	reqCtx.AccountInputTokenRateLimit = authResponse.AccountInputTokenRateLimit
+	reqCtx.AccountOutputTokenRateLimit = authResponse.AccountOutputTokenRateLimit
 
 	return nil
 }

@@ -38,11 +38,13 @@ message AuthLlmInvokeResponse {
     // Resolved caller priority; lower value = higher priority, 0 is highest.
     // Unset when no priority config applies; absent is not 0, check hasPriority().
     optional uint32 priority = 5;
-    // Per-account tier token rate limit, resolved from UAM by ncaId (not tied to any one
-    // function). Enforced as an independent, function-agnostic bucket alongside any
-    // per-function limits in ModelSpec. Absent when the caller has no tier limit.
-    optional string tierInputTokenRateLimit = 6;
-    optional string tierOutputTokenRateLimit = 7;
+    // Account-scoped token rate limit, resolved by ncaId (not tied to any one function).
+    // Enforced as an independent, function-agnostic bucket alongside any per-function
+    // limits in ModelSpec. Absent when none applies. The gateway treats this as an opaque
+    // resolved rate; it does not need to know how NVCF API derived it (tier, override, or
+    // otherwise).
+    optional string accountInputTokenRateLimit = 6;
+    optional string accountOutputTokenRateLimit = 7;
 
     message ModelSpec {
         reserved 3;

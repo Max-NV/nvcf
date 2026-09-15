@@ -263,8 +263,8 @@ func (c *GRPCClient) AuthorizeInvocation(
 		RateLimitKey:             deriveRateLimitKey(authContext),
 		ModelSpecs:               modelSpecsFromProto(resp.GetModelSpecs()),
 		Priority:                 priorityFromProto(resp),
-		TierInputTokenRateLimit:  resp.GetTierInputTokenRateLimit(),
-		TierOutputTokenRateLimit: resp.GetTierOutputTokenRateLimit(),
+		AccountInputTokenRateLimit:  resp.GetAccountInputTokenRateLimit(),
+		AccountOutputTokenRateLimit: resp.GetAccountOutputTokenRateLimit(),
 	}, nil
 }
 

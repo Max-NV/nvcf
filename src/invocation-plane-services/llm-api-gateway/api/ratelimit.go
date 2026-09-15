@@ -144,12 +144,15 @@ func (r CallerLimitResolver) ResolveLimits(
 	}
 }
 
-// TierLimitResolver applies the per-account tier token rate limit UAM resolves by ncaId.
-// Unlike CallerLimitResolver, the bucket is scoped by ncaId alone (no routing_key segment),
-// so it is shared across every function the account invokes rather than reset per function.
-type TierLimitResolver struct{}
+// AccountLimitResolver applies the account-scoped token rate limit resolved by NVCF API
+// (from UAM, by ncaId). The gateway does not know or care whether the value came from a
+// tier, an override, or any other resolution mechanism upstream - it just enforces the
+// rate it was given. Unlike CallerLimitResolver, the bucket is scoped by ncaId alone (no
+// routing_key segment), so it is shared across every function the account invokes rather
+// than reset per function.
+type AccountLimitResolver struct{}
 
-func (r TierLimitResolver) ResolveLimits(
+func (r AccountLimitResolver) ResolveLimits(
 	_ context.Context,
 	reqCtx *requestctx.RequestContext,
 	_ string,
@@ -159,17 +162,17 @@ func (r TierLimitResolver) ResolveLimits(
 	if reqCtx == nil || reqCtx.OrgID == "" {
 		return nil, nil
 	}
-	if reqCtx.TierInputTokenRateLimit == "" && reqCtx.TierOutputTokenRateLimit == "" {
+	if reqCtx.AccountInputTokenRateLimit == "" && reqCtx.AccountOutputTokenRateLimit == "" {
 		return nil, nil
 	}
 
-	parsedInputTokenLimits, err := parseTokenRateLimit(reqCtx.TierInputTokenRateLimit)
+	parsedInputTokenLimits, err := parseTokenRateLimit(reqCtx.AccountInputTokenRateLimit)
 	if err != nil {
-		return nil, fmt.Errorf("parse tier input token rate limit: %w", err)
+		return nil, fmt.Errorf("parse account input token rate limit: %w", err)
 	}
-	parsedOutputTokenLimits, err := parseTokenRateLimit(reqCtx.TierOutputTokenRateLimit)
+	parsedOutputTokenLimits, err := parseTokenRateLimit(reqCtx.AccountOutputTokenRateLimit)
 	if err != nil {
-		return nil, fmt.Errorf("parse tier output token rate limit: %w", err)
+		return nil, fmt.Errorf("parse account output token rate limit: %w", err)
 	}
 	if parsedInputTokenLimits.empty() && parsedOutputTokenLimits.empty() {
 		return nil, nil
@@ -178,7 +181,7 @@ func (r TierLimitResolver) ResolveLimits(
 	return []ratelimit.ResourceLimit{
 		{
 			SubjectKey:            "nvcf:" + reqCtx.OrgID,
-			SubjectRepr:           "tier account `" + reqCtx.OrgID + "`",
+			SubjectRepr:           "account `" + reqCtx.OrgID + "`",
 			Level:                 ratelimit.LevelOrg,
 			InputTokensPerSecond:  parsedInputTokenLimits.tokensPerSecond,
 			InputTokensPerMinute:  parsedInputTokenLimits.tokensPerMinute,

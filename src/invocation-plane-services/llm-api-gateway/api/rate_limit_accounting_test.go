@@ -1005,16 +1005,16 @@ func TestCallerLimitResolverParsesMonthTokenLimitLevels(t *testing.T) {
 	}
 }
 
-func TestTierLimitResolverIsScopedByNcaIdOnly(t *testing.T) {
+func TestAccountLimitResolverIsScopedByNcaIdOnly(t *testing.T) {
 	t.Parallel()
 
-	limits, err := TierLimitResolver{}.ResolveLimits(
+	limits, err := AccountLimitResolver{}.ResolveLimits(
 		context.Background(),
 		&requestctx.RequestContext{
 			OrgID:                    "nca-456",
 			RoutingKey:               "fn-chat",
-			TierInputTokenRateLimit:  "5000-M",
-			TierOutputTokenRateLimit: "1000-M",
+			AccountInputTokenRateLimit:  "5000-M",
+			AccountOutputTokenRateLimit: "1000-M",
 		},
 		"/v1/chat/completions",
 	)
@@ -1035,10 +1035,10 @@ func TestTierLimitResolverIsScopedByNcaIdOnly(t *testing.T) {
 	}
 }
 
-func TestTierLimitResolverReturnsNoLimitWhenUnconfigured(t *testing.T) {
+func TestAccountLimitResolverReturnsNoLimitWhenUnconfigured(t *testing.T) {
 	t.Parallel()
 
-	limits, err := TierLimitResolver{}.ResolveLimits(
+	limits, err := AccountLimitResolver{}.ResolveLimits(
 		context.Background(),
 		&requestctx.RequestContext{OrgID: "nca-456", RoutingKey: "fn-chat"},
 		"/v1/chat/completions",
@@ -1051,43 +1051,43 @@ func TestTierLimitResolverReturnsNoLimitWhenUnconfigured(t *testing.T) {
 	}
 }
 
-func TestTierLimitResolverDifferentFunctionsShareOneBucket(t *testing.T) {
+func TestAccountLimitResolverDifferentFunctionsShareOneBucket(t *testing.T) {
 	t.Parallel()
 
 	reqCtx := &requestctx.RequestContext{
 		OrgID:                   "nca-456",
-		TierInputTokenRateLimit: "5000-M",
+		AccountInputTokenRateLimit: "5000-M",
 	}
 
 	reqCtx.RoutingKey = "fn-a"
-	limitsForFnA, err := TierLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
+	limitsForFnA, err := AccountLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("resolve limits: %v", err)
 	}
 	reqCtx.RoutingKey = "fn-b"
-	limitsForFnB, err := TierLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
+	limitsForFnB, err := AccountLimitResolver{}.ResolveLimits(context.Background(), reqCtx, "/v1/chat/completions")
 	if err != nil {
 		t.Fatalf("resolve limits: %v", err)
 	}
 
 	if limitsForFnA[0].SubjectKey != limitsForFnB[0].SubjectKey {
-		t.Fatalf("tier bucket differs by function: %q vs %q",
+		t.Fatalf("account bucket differs by function: %q vs %q",
 			limitsForFnA[0].SubjectKey, limitsForFnB[0].SubjectKey)
 	}
 }
 
-func TestCompositeLimitResolverCombinesPerFunctionAndTierLimits(t *testing.T) {
+func TestCompositeLimitResolverCombinesPerFunctionAndAccountLimits(t *testing.T) {
 	t.Parallel()
 
-	resolver := CompositeLimitResolver{CallerLimitResolver{}, TierLimitResolver{}}
+	resolver := CompositeLimitResolver{CallerLimitResolver{}, AccountLimitResolver{}}
 	limits, err := resolver.ResolveLimits(
 		context.Background(),
 		&requestctx.RequestContext{
 			OrgID:                    "nca-456",
 			RoutingKey:               "fn-chat",
 			Model:                    "company-name/model-name",
-			TierInputTokenRateLimit:  "5000-M",
-			TierOutputTokenRateLimit: "1000-M",
+			AccountInputTokenRateLimit:  "5000-M",
+			AccountOutputTokenRateLimit: "1000-M",
 			ModelSpecs: map[string]nvcf.ModelSpec{
 				"company-name/model-name": {
 					TokenRateLimit: "9000-M",
@@ -1100,16 +1100,16 @@ func TestCompositeLimitResolverCombinesPerFunctionAndTierLimits(t *testing.T) {
 		t.Fatalf("resolve limits: %v", err)
 	}
 	if len(limits) != 2 {
-		t.Fatalf("len(limits) = %d, want 2 (one per-function, one tier)", len(limits))
+		t.Fatalf("len(limits) = %d, want 2 (one per-function, one account)", len(limits))
 	}
 
-	var sawFunctionScoped, sawTierScoped bool
+	var sawFunctionScoped, sawAccountScoped bool
 	for _, limit := range limits {
 		switch limit.SubjectKey {
 		case "nvcf:nca-456":
-			sawTierScoped = true
+			sawAccountScoped = true
 			if limit.InputTokensPerMinute != 5000 {
-				t.Fatalf("tier input tokens per minute = %d, want 5000", limit.InputTokensPerMinute)
+				t.Fatalf("account input tokens per minute = %d, want 5000", limit.InputTokensPerMinute)
 			}
 		case rateLimitSubjectKey("nca-456", "", "fn-chat"):
 			sawFunctionScoped = true
@@ -1121,8 +1121,8 @@ func TestCompositeLimitResolverCombinesPerFunctionAndTierLimits(t *testing.T) {
 	if !sawFunctionScoped {
 		t.Fatal("missing per-function limit")
 	}
-	if !sawTierScoped {
-		t.Fatal("missing tier limit")
+	if !sawAccountScoped {
+		t.Fatal("missing account limit")
 	}
 }
 
