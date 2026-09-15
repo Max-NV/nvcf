@@ -287,11 +287,9 @@ func modelSpecsFromProto(specs map[string]*llmgatewaypb.AuthLlmInvokeResponse_Mo
 	result := make(map[string]ModelSpec, len(specs))
 	for key, spec := range specs {
 		result[key] = ModelSpec{
-			URIs:                 spec.GetUris(),
-			TokenRateLimit:       spec.GetTokenRateLimit(),
-			InputTokenRateLimit:  spec.GetInputTokenRateLimit(),
-			OutputTokenRateLimit: spec.GetOutputTokenRateLimit(),
-			RoutingMethod:        spec.GetRoutingMethod(),
+			URIs:           spec.GetUris(),
+			TokenRateLimit: spec.GetTokenRateLimit(),
+			RoutingMethod:  spec.GetRoutingMethod(),
 		}
 	}
 	return result

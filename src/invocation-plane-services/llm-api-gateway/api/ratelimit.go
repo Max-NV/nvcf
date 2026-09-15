@@ -85,7 +85,7 @@ func (r CallerLimitResolver) ResolveLimits(
 	if !ok {
 		return nil, nil
 	}
-	if spec.TokenRateLimit == "" && spec.InputTokenRateLimit == "" && spec.OutputTokenRateLimit == "" {
+	if spec.TokenRateLimit == "" {
 		return nil, nil
 	}
 
@@ -93,41 +93,21 @@ func (r CallerLimitResolver) ResolveLimits(
 	if err != nil {
 		return nil, fmt.Errorf("parse token rate limit for model %q: %w", reqCtx.Model, err)
 	}
-	parsedInputTokenLimits, err := parseTokenRateLimit(spec.InputTokenRateLimit)
-	if err != nil {
-		return nil, fmt.Errorf("parse input token rate limit for model %q: %w", reqCtx.Model, err)
-	}
-	parsedOutputTokenLimits, err := parseTokenRateLimit(spec.OutputTokenRateLimit)
-	if err != nil {
-		return nil, fmt.Errorf("parse output token rate limit for model %q: %w", reqCtx.Model, err)
-	}
 
-	if parsedTokenLimits.empty() && parsedInputTokenLimits.empty() && parsedOutputTokenLimits.empty() {
+	if parsedTokenLimits.empty() {
 		return nil, nil
 	}
 
 	baseLimit := ratelimit.ResourceLimit{
-		SubjectKey:            "routing_key:" + reqCtx.RoutingKey,
-		SubjectRepr:           "routing key `" + reqCtx.RoutingKey + "`",
-		Level:                 ratelimit.LevelFunction,
-		TokensPerSecond:       parsedTokenLimits.tokensPerSecond,
-		TokensPerMinute:       parsedTokenLimits.tokensPerMinute,
-		TokensPerHour:         parsedTokenLimits.tokensPerHour,
-		TokensPerDay:          parsedTokenLimits.tokensPerDay,
-		TokensPerWeek:         parsedTokenLimits.tokensPerWeek,
-		TokensPerMonth:        parsedTokenLimits.tokensPerMonth,
-		InputTokensPerSecond:  parsedInputTokenLimits.tokensPerSecond,
-		InputTokensPerMinute:  parsedInputTokenLimits.tokensPerMinute,
-		InputTokensPerHour:    parsedInputTokenLimits.tokensPerHour,
-		InputTokensPerDay:     parsedInputTokenLimits.tokensPerDay,
-		InputTokensPerWeek:    parsedInputTokenLimits.tokensPerWeek,
-		InputTokensPerMonth:   parsedInputTokenLimits.tokensPerMonth,
-		OutputTokensPerSecond: parsedOutputTokenLimits.tokensPerSecond,
-		OutputTokensPerMinute: parsedOutputTokenLimits.tokensPerMinute,
-		OutputTokensPerHour:   parsedOutputTokenLimits.tokensPerHour,
-		OutputTokensPerDay:    parsedOutputTokenLimits.tokensPerDay,
-		OutputTokensPerWeek:   parsedOutputTokenLimits.tokensPerWeek,
-		OutputTokensPerMonth:  parsedOutputTokenLimits.tokensPerMonth,
+		SubjectKey:      "routing_key:" + reqCtx.RoutingKey,
+		SubjectRepr:     "routing key `" + reqCtx.RoutingKey + "`",
+		Level:           ratelimit.LevelFunction,
+		TokensPerSecond: parsedTokenLimits.tokensPerSecond,
+		TokensPerMinute: parsedTokenLimits.tokensPerMinute,
+		TokensPerHour:   parsedTokenLimits.tokensPerHour,
+		TokensPerDay:    parsedTokenLimits.tokensPerDay,
+		TokensPerWeek:   parsedTokenLimits.tokensPerWeek,
+		TokensPerMonth:  parsedTokenLimits.tokensPerMonth,
 	}
 
 	switch {
@@ -144,10 +124,10 @@ func (r CallerLimitResolver) ResolveLimits(
 	}
 }
 
-// AccountLimitResolver applies the account-scoped token rate limit resolved by NVCF API
-// (from UAM, by ncaId). The gateway does not know or care whether the value came from a
-// tier, an override, or any other resolution mechanism upstream - it just enforces the
-// rate it was given. Unlike CallerLimitResolver, the bucket is scoped by ncaId alone (no
+// AccountLimitResolver applies the account-scoped token rate limit NVCF API resolves by
+// ncaId. The gateway does not know or care whether the value came from a tier, an
+// override, or any other resolution mechanism upstream - it just enforces the rate it
+// was given. Unlike CallerLimitResolver, the bucket is scoped by ncaId alone (no
 // routing_key segment), so it is shared across every function the account invokes rather
 // than reset per function.
 type AccountLimitResolver struct{}
@@ -806,32 +786,32 @@ func chooseTokenStats(
 		{ratelimit.InputTokensPerWeek, ratelimit.OutputTokensPerWeek},
 		{ratelimit.InputTokensPerMonth, ratelimit.OutputTokensPerMonth},
 	} {
-		var (
-			hasLimit   bool
-			limit      int64
-			remaining  int64
-			resetAfter time.Duration
-		)
+		// Input and output are independent buckets, not a combined quota: summing
+		// their limit/remaining would let a healthy output bucket mask an exhausted
+		// input bucket (or vice versa), reporting a positive Remaining-Tokens header
+		// on the same response that a 429 came from. Report the binding sub-dimension
+		// (the one closer to exhausted) on its own instead.
+		var binding *ratelimit.RateLimitResult
 		for _, dim := range pair {
 			result := results[dim]
 			if result == nil {
 				continue
 			}
-			hasLimit = true
-			limit += result.LimitValue()
-			remaining += result.RemainingValue()
-			if result.ResetAfter() > resetAfter {
-				resetAfter = result.ResetAfter()
+			if binding == nil || result.RemainingValue() < binding.RemainingValue() {
+				binding = result
 			}
 		}
-		if !hasLimit {
+		if binding == nil {
 			continue
 		}
 		// Prefer whichever configured period is closest to being exhausted, so the
 		// header always surfaces the constraint that will actually throttle next
 		// instead of whichever period happens to be checked first.
-		if !chosen || remaining < chosenRemaining {
-			chosenLimit, chosenRemaining, chosenResetAfter, chosen = limit, remaining, resetAfter, true
+		if !chosen || binding.RemainingValue() < chosenRemaining {
+			chosenLimit = binding.LimitValue()
+			chosenRemaining = binding.RemainingValue()
+			chosenResetAfter = binding.ResetAfter()
+			chosen = true
 		}
 	}
 	if chosen {

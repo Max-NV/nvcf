@@ -98,10 +98,9 @@ type AuthLlmInvokeResponse struct {
 	// Unset when no priority config applies; absent is not 0, check hasPriority().
 	Priority *uint32 `protobuf:"varint,5,opt,name=priority,proto3,oneof" json:"priority,omitempty"`
 	// Account-scoped token rate limit, resolved by ncaId (not tied to any one function).
-	// Enforced as an independent, function-agnostic bucket alongside any per-function
-	// limits in ModelSpec. Absent when none applies. The gateway treats this as an opaque
-	// resolved rate; it does not need to know how NVCF API derived it (tier, override, or
-	// otherwise).
+	// Enforced as an independent, function-agnostic bucket. Absent when none applies.
+	// The gateway treats this as an opaque resolved rate; it does not need to know how
+	// NVCF API derived it (tier, override, or otherwise).
 	AccountInputTokenRateLimit  *string `protobuf:"bytes,6,opt,name=accountInputTokenRateLimit,proto3,oneof" json:"accountInputTokenRateLimit,omitempty"`
 	AccountOutputTokenRateLimit *string `protobuf:"bytes,7,opt,name=accountOutputTokenRateLimit,proto3,oneof" json:"accountOutputTokenRateLimit,omitempty"`
 	unknownFields               protoimpl.UnknownFields
@@ -276,14 +275,12 @@ func (x *AuthLlmWorkerResponse) GetRoutingKey() string {
 }
 
 type AuthLlmInvokeResponse_ModelSpec struct {
-	state                protoimpl.MessageState `protogen:"open.v1"`
-	Uris                 []string               `protobuf:"bytes,1,rep,name=uris,proto3" json:"uris,omitempty"`
-	TokenRateLimit       *string                `protobuf:"bytes,2,opt,name=tokenRateLimit,proto3,oneof" json:"tokenRateLimit,omitempty"`
-	RoutingMethod        *string                `protobuf:"bytes,4,opt,name=routingMethod,proto3,oneof" json:"routingMethod,omitempty"`
-	InputTokenRateLimit  *string                `protobuf:"bytes,5,opt,name=inputTokenRateLimit,proto3,oneof" json:"inputTokenRateLimit,omitempty"`
-	OutputTokenRateLimit *string                `protobuf:"bytes,6,opt,name=outputTokenRateLimit,proto3,oneof" json:"outputTokenRateLimit,omitempty"`
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Uris           []string               `protobuf:"bytes,1,rep,name=uris,proto3" json:"uris,omitempty"`
+	TokenRateLimit *string                `protobuf:"bytes,2,opt,name=tokenRateLimit,proto3,oneof" json:"tokenRateLimit,omitempty"`
+	RoutingMethod  *string                `protobuf:"bytes,4,opt,name=routingMethod,proto3,oneof" json:"routingMethod,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *AuthLlmInvokeResponse_ModelSpec) Reset() {
@@ -337,20 +334,6 @@ func (x *AuthLlmInvokeResponse_ModelSpec) GetRoutingMethod() string {
 	return ""
 }
 
-func (x *AuthLlmInvokeResponse_ModelSpec) GetInputTokenRateLimit() string {
-	if x != nil && x.InputTokenRateLimit != nil {
-		return *x.InputTokenRateLimit
-	}
-	return ""
-}
-
-func (x *AuthLlmInvokeResponse_ModelSpec) GetOutputTokenRateLimit() string {
-	if x != nil && x.OutputTokenRateLimit != nil {
-		return *x.OutputTokenRateLimit
-	}
-	return ""
-}
-
 var File_llm_gateway_proto protoreflect.FileDescriptor
 
 const file_llm_gateway_proto_rawDesc = "" +
@@ -360,7 +343,7 @@ const file_llm_gateway_proto_rawDesc = "" +
 	"\x18clientAuthorizationToken\x18\x01 \x01(\tR\x18clientAuthorizationToken\x12\x1e\n" +
 	"\n" +
 	"routingKey\x18\x02 \x01(\tR\n" +
-	"routingKey\"\x87\b\n" +
+	"routingKey\"\x9d\a\n" +
 	"\x15AuthLlmInvokeResponse\x12\x1e\n" +
 	"\n" +
 	"routingKey\x18\x01 \x01(\tR\n" +
@@ -378,17 +361,13 @@ const file_llm_gateway_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1ak\n" +
 	"\x0fModelSpecsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12B\n" +
-	"\x05value\x18\x02 \x01(\v2,.llm_gateway.AuthLlmInvokeResponse.ModelSpecR\x05value:\x028\x01\x1a\xce\x02\n" +
+	"\x05value\x18\x02 \x01(\v2,.llm_gateway.AuthLlmInvokeResponse.ModelSpecR\x05value:\x028\x01\x1a\xe4\x01\n" +
 	"\tModelSpec\x12\x12\n" +
 	"\x04uris\x18\x01 \x03(\tR\x04uris\x12+\n" +
 	"\x0etokenRateLimit\x18\x02 \x01(\tH\x00R\x0etokenRateLimit\x88\x01\x01\x12)\n" +
-	"\rroutingMethod\x18\x04 \x01(\tH\x01R\rroutingMethod\x88\x01\x01\x125\n" +
-	"\x13inputTokenRateLimit\x18\x05 \x01(\tH\x02R\x13inputTokenRateLimit\x88\x01\x01\x127\n" +
-	"\x14outputTokenRateLimit\x18\x06 \x01(\tH\x03R\x14outputTokenRateLimit\x88\x01\x01B\x11\n" +
+	"\rroutingMethod\x18\x04 \x01(\tH\x01R\rroutingMethod\x88\x01\x01B\x11\n" +
 	"\x0f_tokenRateLimitB\x10\n" +
-	"\x0e_routingMethodB\x16\n" +
-	"\x14_inputTokenRateLimitB\x17\n" +
-	"\x15_outputTokenRateLimitJ\x04\b\x03\x10\x04R\ttokenizerB\v\n" +
+	"\x0e_routingMethodJ\x04\b\x03\x10\x04J\x04\b\x05\x10\x06J\x04\b\x06\x10\aR\ttokenizerR\x13inputTokenRateLimitR\x14outputTokenRateLimitB\v\n" +
 	"\t_priorityB\x1d\n" +
 	"\x1b_accountInputTokenRateLimitB\x1e\n" +
 	"\x1c_accountOutputTokenRateLimit\"8\n" +

@@ -104,12 +104,6 @@ func TestGRPCClientAuthorizeInvocation(t *testing.T) {
 	if spec.TokenRateLimit != "5-M,20-D" {
 		t.Fatalf("token rate limit = %q, want 5-M,20-D", spec.TokenRateLimit)
 	}
-	if spec.InputTokenRateLimit != "3-M,10-D" {
-		t.Fatalf("input token rate limit = %q, want 3-M,10-D", spec.InputTokenRateLimit)
-	}
-	if spec.OutputTokenRateLimit != "2-M,10-D" {
-		t.Fatalf("output token rate limit = %q, want 2-M,10-D", spec.OutputTokenRateLimit)
-	}
 	if spec.RoutingMethod != "round_robin" {
 		t.Fatalf("routing method = %q, want round_robin", spec.RoutingMethod)
 	}
@@ -412,18 +406,16 @@ func (s *stubInvocationService) AuthLlmInvocation(
 	}
 
 	resp := &llmgatewaypb.AuthLlmInvokeResponse{
-		RoutingKey:               "fn-123",
-		ClientAuthSubject:        clientAuthID,
-		Priority:                 s.priority,
+		RoutingKey:                  "fn-123",
+		ClientAuthSubject:           clientAuthID,
+		Priority:                    s.priority,
 		AccountInputTokenRateLimit:  stringPtr("9-M"),
 		AccountOutputTokenRateLimit: stringPtr("4-M"),
 		ModelSpecs: map[string]*llmgatewaypb.AuthLlmInvokeResponse_ModelSpec{
 			"gateway-model": {
-				Uris:                 []string{"https://example.com/model"},
-				TokenRateLimit:       stringPtr("5-M,20-D"),
-				InputTokenRateLimit:  stringPtr("3-M,10-D"),
-				OutputTokenRateLimit: stringPtr("2-M,10-D"),
-				RoutingMethod:        stringPtr("round_robin"),
+				Uris:           []string{"https://example.com/model"},
+				TokenRateLimit: stringPtr("5-M,20-D"),
+				RoutingMethod:  stringPtr("round_robin"),
 			},
 		},
 	}
