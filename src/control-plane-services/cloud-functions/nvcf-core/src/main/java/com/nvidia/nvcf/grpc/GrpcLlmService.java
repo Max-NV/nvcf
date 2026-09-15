@@ -21,7 +21,6 @@ import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_INVOCATION;
 import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_WORKER;
 
 import com.nvidia.boot.exceptions.BadRequestException;
-import com.nvidia.boot.exceptions.ForbiddenException;
 import com.nvidia.boot.exceptions.UnauthorizedException;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeRequest;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeResponse;
@@ -92,13 +91,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         var functionModels = functionMapperService.toFunctionModels(
                 first.targetFunction().getModelSpecs());
         var resolvedPriority = resolvePriority(first);
-        var tierRateLimit = resolveTierRateLimit(authentication);
-
-        if (tierRateLimit.isPresent() && tierRateLimit.get().disable()) {
-            var mesg = "Function id '%s': caller is disabled".formatted(functionId);
-            log.error(mesg);
-            throw new ForbiddenException(mesg);
-        }
+        var accountRateLimit = resolveAccountRateLimit(authentication);
 
         var responseBuilder = AuthLlmInvokeResponse.newBuilder()
                 .setRoutingKey(request.getRoutingKey())
@@ -106,12 +99,12 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                 .putAuthContext("ncaId", first.ncaId());
 
         resolvedPriority.ifPresent(p -> responseBuilder.setPriority(p.intValue()));
-        tierRateLimit.ifPresent(rl -> {
+        accountRateLimit.ifPresent(rl -> {
             if (rl.inputTokenRateLimit() != null) {
-                responseBuilder.setTierInputTokenRateLimit(rl.inputTokenRateLimit());
+                responseBuilder.setAccountInputTokenRateLimit(rl.inputTokenRateLimit());
             }
             if (rl.outputTokenRateLimit() != null) {
-                responseBuilder.setTierOutputTokenRateLimit(rl.outputTokenRateLimit());
+                responseBuilder.setAccountOutputTokenRateLimit(rl.outputTokenRateLimit());
             }
         });
 
@@ -165,12 +158,19 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     }
 
     /**
-     * Reads the per-account tier rate limit UAM already resolved and attached to the
-     * SAK/apikey evaluation result during {@link #validateInvokeFunctionAuth}, if the caller
-     * authenticated that way. NVCF does not compute or store this; absent when the caller has
-     * no tier limit, or authenticated by a mechanism that doesn't carry one.
+     * Reads the account-scoped rate limit already resolved and attached to the SAK/apikey
+     * evaluation result during {@link #validateInvokeFunctionAuth}, if the caller authenticated
+     * that way. NVCF does not compute or store this; absent when none applies, or the caller
+     * authenticated by a mechanism that doesn't carry one.
+     *
+     * <p>Only the apikey (nvapi-) path carries this today, since it is the only auth path with
+     * an existing per-token UAM evaluation ({@code apikey.allow}) to attach it to - see
+     * {@link com.nvidia.nvcf.service.apikeys.ApiKeysService}. JWT-authenticated invocations
+     * (see {@link com.nvidia.nvcf.service.account.AccountService#getNcaId}) resolve an ncaId
+     * through a different path with no equivalent UAM hook, so they never get an account rate
+     * limit here. Tracked as a gap pending the UAM/rate-limit contract.
      */
-    private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveTierRateLimit(
+    private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
             Authentication authentication) {
         if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
             return Optional.empty();

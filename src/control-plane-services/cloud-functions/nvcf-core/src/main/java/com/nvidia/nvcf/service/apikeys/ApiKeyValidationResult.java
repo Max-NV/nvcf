@@ -87,16 +87,14 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
     }
 
     /**
-     * Per-account tier rate limit, resolved by UAM from the ncaId and attached to the SAK/apikey
-     * evaluation result (not stored or computed by NVCF). Absent when the caller has no tier
-     * limit configured. rateLimit fields use the same "&lt;value&gt;-&lt;unit&gt;" format as the
-     * gateway's own tokenRateLimit, not a raw quota number.
+     * Account-scoped rate limit, resolved from the ncaId and attached to the SAK/apikey
+     * evaluation result (not stored or computed by NVCF). Absent when none applies. Fields
+     * use the same "&lt;value&gt;-&lt;unit&gt;" format as the gateway's own tokenRateLimit,
+     * not a raw quota number. UAM contract pending; this is a mocked shape in NVCF API for now.
      */
     public record RateLimitAttributes(
-            @JsonProperty("tier") String tier,
             @JsonProperty("inputTokenRateLimit") @Nullable String inputTokenRateLimit,
-            @JsonProperty("outputTokenRateLimit") @Nullable String outputTokenRateLimit,
-            @JsonProperty("disable") boolean disable) {
+            @JsonProperty("outputTokenRateLimit") @Nullable String outputTokenRateLimit) {
 
     }
 

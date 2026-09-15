@@ -206,27 +206,27 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
     }
 
     @Test
-    void authLlmInvocation_tierRateLimitFromApiKeyAuth() {
+    void authLlmInvocation_accountRateLimitFromApiKeyAuth() {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
         setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
                     List.of(SCOPE_INVOKE_FUNCTION), true,
-                    new RateLimitAttributes("NVDA", "5000-M", "1000-M", false));
+                    new RateLimitAttributes("5000-M", "1000-M"));
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = "nvapi-stg-some-key";
 
         var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
 
-        assertThat(response.hasTierInputTokenRateLimit()).isTrue();
-        assertThat(response.getTierInputTokenRateLimit()).isEqualTo("5000-M");
-        assertThat(response.hasTierOutputTokenRateLimit()).isTrue();
-        assertThat(response.getTierOutputTokenRateLimit()).isEqualTo("1000-M");
+        assertThat(response.hasAccountInputTokenRateLimit()).isTrue();
+        assertThat(response.getAccountInputTokenRateLimit()).isEqualTo("5000-M");
+        assertThat(response.hasAccountOutputTokenRateLimit()).isTrue();
+        assertThat(response.getAccountOutputTokenRateLimit()).isEqualTo("1000-M");
     }
 
     @Test
-    void authLlmInvocation_noTierRateLimitWhenApiKeyAuthCarriesNone() {
+    void authLlmInvocation_noAccountRateLimitWhenApiKeyAuthCarriesNone() {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
@@ -238,25 +238,8 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
 
         var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
 
-        assertThat(response.hasTierInputTokenRateLimit()).isFalse();
-        assertThat(response.hasTierOutputTokenRateLimit()).isFalse();
-    }
-
-    @Test
-    void authLlmInvocation_disabledTierRejectsInvocation() {
-        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
-        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
-        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
-                    List.of(new Resource("account-functions", "*")),
-                    List.of(SCOPE_INVOKE_FUNCTION), true,
-                    new RateLimitAttributes("PUB", "5000-M", "1000-M", true));
-        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
-        var clientToken = "nvapi-stg-some-key";
-
-        assertThatThrownBy(() -> callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID))
-                .isInstanceOf(StatusRuntimeException.class)
-                .hasMessageContaining("PERMISSION_DENIED");
+        assertThat(response.hasAccountInputTokenRateLimit()).isFalse();
+        assertThat(response.hasAccountOutputTokenRateLimit()).isFalse();
     }
 
     // ---------------------------------------------------------------------------
