@@ -1055,15 +1055,20 @@ func TestChooseTokenStatsReportsBindingDimensionAtSamePeriod(t *testing.T) {
 func TestChooseTokenStatsReportsExhaustedDimensionNotHealthySibling(t *testing.T) {
 	t.Parallel()
 
-	// Input is fully exhausted (would 429); output still has plenty left. The
-	// header must reflect the exhausted dimension, not a sum that hides it behind
-	// output's healthy remaining.
+	// Input is exhausted below what's requested (blocks with 429); output still
+	// has plenty left. The header must reflect the exhausted dimension, not a sum
+	// that hides it behind output's healthy remaining.
+	inputResult := &ratelimit.RateLimitResult{
+		CurrentValue: 50,
+		Requested:    100,
+		RateLimit:    ratelimit.RateLimit{Limit: 100, Period: time.Minute},
+	}
+	if inputResult.Allowed() {
+		t.Fatal("test setup: input result should not be allowed")
+	}
+
 	results := map[ratelimit.LimitDimension]*ratelimit.RateLimitResult{
-		ratelimit.InputTokensPerMinute: {
-			CurrentValue: 100,
-			Requested:    100,
-			RateLimit:    ratelimit.RateLimit{Limit: 100, Period: time.Minute},
-		},
+		ratelimit.InputTokensPerMinute: inputResult,
 		ratelimit.OutputTokensPerMinute: {
 			CurrentValue: 10,
 			Requested:    5,
