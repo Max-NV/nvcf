@@ -249,46 +249,6 @@ func TestParseLLMModelStringRejectsInvalidTokenRateLimit(t *testing.T) {
 	assertTokenRateLimitError(t, err)
 }
 
-func TestParseLLMModelStringAcceptsInputOutputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	model, err := parseLLMModelString(
-		"name=dummy-model,uris=/v1/chat/completions,inputTokenRateLimit=3000-M,outputTokenRateLimit=1000-M")
-	if err != nil {
-		t.Fatalf("parse llm model: %v", err)
-	}
-
-	if model.LLMConfig == nil {
-		t.Fatal("llmConfig is nil")
-	}
-	if got := stringValue(model.LLMConfig.InputTokenRateLimit); got != "3000-M" {
-		t.Fatalf("inputTokenRateLimit = %q, want 3000-M", got)
-	}
-	if got := stringValue(model.LLMConfig.OutputTokenRateLimit); got != "1000-M" {
-		t.Fatalf("outputTokenRateLimit = %q, want 1000-M", got)
-	}
-}
-
-func TestParseLLMModelStringRejectsInvalidInputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseLLMModelString(
-		"name=dummy-model,uris=/v1/chat/completions,inputTokenRateLimit=100-A")
-	if err == nil || !strings.Contains(err.Error(), "invalid inputTokenRateLimit") {
-		t.Fatalf("err = %v, want invalid inputTokenRateLimit", err)
-	}
-}
-
-func TestParseLLMModelStringRejectsInvalidOutputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseLLMModelString(
-		"name=dummy-model,uris=/v1/chat/completions,outputTokenRateLimit=100-A")
-	if err == nil || !strings.Contains(err.Error(), "invalid outputTokenRateLimit") {
-		t.Fatalf("err = %v, want invalid outputTokenRateLimit", err)
-	}
-}
-
 func TestArtifactConfigToClientRejectsInvalidTokenRateLimit(t *testing.T) {
 	t.Parallel()
 
@@ -300,43 +260,6 @@ func TestArtifactConfigToClientRejectsInvalidTokenRateLimit(t *testing.T) {
 		},
 	})
 	assertTokenRateLimitError(t, err)
-}
-
-func TestArtifactConfigToClientMapsInputOutputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	artifact, err := artifactConfigToClientArtifact(ArtifactConfig{
-		Name: "dummy-model",
-		LLMConfig: &LLMConfigInput{
-			URIs:                 []string{"/v1/chat/completions"},
-			InputTokenRateLimit:  optionalString("3000-M"),
-			OutputTokenRateLimit: optionalString("1000-M"),
-		},
-	})
-	if err != nil {
-		t.Fatalf("artifact config to client: %v", err)
-	}
-	if got := stringValue(artifact.LLMConfig.InputTokenRateLimit); got != "3000-M" {
-		t.Fatalf("inputTokenRateLimit = %q, want 3000-M", got)
-	}
-	if got := stringValue(artifact.LLMConfig.OutputTokenRateLimit); got != "1000-M" {
-		t.Fatalf("outputTokenRateLimit = %q, want 1000-M", got)
-	}
-}
-
-func TestArtifactConfigToClientRejectsInvalidInputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	_, err := artifactConfigToClientArtifact(ArtifactConfig{
-		Name: "dummy-model",
-		LLMConfig: &LLMConfigInput{
-			URIs:                []string{"/v1/chat/completions"},
-			InputTokenRateLimit: optionalString("100-A"),
-		},
-	})
-	if err == nil || !strings.Contains(err.Error(), "invalid inputTokenRateLimit") {
-		t.Fatalf("err = %v, want invalid inputTokenRateLimit", err)
-	}
 }
 
 func TestLoadCreateConfigAppendsLLMModelFlag(t *testing.T) {
@@ -557,49 +480,6 @@ func TestModelUpdateConfigToClientRejectsInvalidTokenRateLimit(t *testing.T) {
 		},
 	})
 	assertTokenRateLimitError(t, err)
-}
-
-func TestParseLLMModelUpdateStringAcceptsInputOutputTokenRateLimitOnly(t *testing.T) {
-	t.Parallel()
-
-	update, err := parseLLMModelUpdateString(
-		"name=dummy-model,inputTokenRateLimit=3000-M,outputTokenRateLimit=1000-M")
-	if err != nil {
-		t.Fatalf("parse llm model update: %v", err)
-	}
-
-	if update.LLMConfig == nil {
-		t.Fatal("llmConfig is nil")
-	}
-	if got := stringValue(update.LLMConfig.InputTokenRateLimit); got != "3000-M" {
-		t.Fatalf("inputTokenRateLimit = %q, want 3000-M", got)
-	}
-	if got := stringValue(update.LLMConfig.OutputTokenRateLimit); got != "1000-M" {
-		t.Fatalf("outputTokenRateLimit = %q, want 1000-M", got)
-	}
-}
-
-func TestParseLLMModelUpdateStringRejectsInvalidInputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	_, err := parseLLMModelUpdateString("name=dummy-model,inputTokenRateLimit=100-A")
-	if err == nil || !strings.Contains(err.Error(), "invalid inputTokenRateLimit") {
-		t.Fatalf("err = %v, want invalid inputTokenRateLimit", err)
-	}
-}
-
-func TestModelUpdateConfigToClientRejectsInvalidOutputTokenRateLimit(t *testing.T) {
-	t.Parallel()
-
-	_, err := modelUpdateConfigToClient(ModelUpdateConfig{
-		ModelName: "dummy-model",
-		LLMConfig: &LLMConfigUpdateInput{
-			OutputTokenRateLimit: optionalString("100-A"),
-		},
-	})
-	if err == nil || !strings.Contains(err.Error(), "invalid outputTokenRateLimit") {
-		t.Fatalf("err = %v, want invalid outputTokenRateLimit", err)
-	}
 }
 
 func TestLoadUpdateConfigAppendsLLMModelUpdateFlag(t *testing.T) {
