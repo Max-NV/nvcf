@@ -28,7 +28,6 @@ import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerRequest;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerResponse;
 import com.nvidia.nvcf.proto.llm_gateway.LlmGatewayGrpc.LlmGatewayImplBase;
 import com.nvidia.nvcf.service.account.AccountService;
-import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult;
 import com.nvidia.nvcf.service.function.FunctionLlmService;
 import com.nvidia.nvcf.service.function.FunctionMapperService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService;
@@ -45,9 +44,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 @Slf4j
 @GrpcService
@@ -94,7 +91,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         var functionModels = functionMapperService.toFunctionModels(
                 first.targetFunction().getModelSpecs());
         var resolvedPriority = resolvePriority(first);
-        var accountRateLimit = resolveAccountRateLimit(authentication, ncaId);
+        var accountRateLimit = ssaService.getTieredRateLimit(ncaId);
 
         var responseBuilder = AuthLlmInvokeResponse.newBuilder()
                 .setRoutingKey(request.getRoutingKey())
@@ -102,14 +99,12 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                 .putAuthContext("ncaId", first.ncaId());
 
         resolvedPriority.ifPresent(p -> responseBuilder.setPriority(p.intValue()));
-        accountRateLimit.ifPresent(rl -> {
-            if (rl.inputTokenRateLimit() != null) {
-                responseBuilder.setAccountInputTokenRateLimit(rl.inputTokenRateLimit());
-            }
-            if (rl.outputTokenRateLimit() != null) {
-                responseBuilder.setAccountOutputTokenRateLimit(rl.outputTokenRateLimit());
-            }
-        });
+        if (accountRateLimit.inputTokenRateLimit() != null) {
+            responseBuilder.setAccountInputTokenRateLimit(accountRateLimit.inputTokenRateLimit());
+        }
+        if (accountRateLimit.outputTokenRateLimit() != null) {
+            responseBuilder.setAccountOutputTokenRateLimit(accountRateLimit.outputTokenRateLimit());
+        }
 
         for (var model : functionModels) {
             var modelSpecBuilder = AuthLlmInvokeResponse.ModelSpec.newBuilder();
@@ -119,9 +114,6 @@ public class GrpcLlmService extends LlmGatewayImplBase {
             }
             if (llmConfig != null && llmConfig.getTokenRateLimit() != null) {
                 modelSpecBuilder.setTokenRateLimit(llmConfig.getTokenRateLimit());
-            }
-            if (llmConfig != null && llmConfig.getTokenizer() != null) {
-                modelSpecBuilder.setTokenizer(llmConfig.getTokenizer());
             }
             if (llmConfig != null && llmConfig.getRoutingMethod() != null) {
                 modelSpecBuilder.setRoutingMethod(llmConfig.getRoutingMethod());
@@ -158,27 +150,6 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                     context.targetFunction().getFunctionVersionId()), exception);
             throw exception;
         }
-    }
-
-    // apikey path reads the rate limit off the Authentication attached during
-    // validateInvokeFunctionAuth; SSA-JWT has no such attribute, so it calls SsaService
-    // directly by ncaId. SsaService's own cache absorbs brief UAM outages; if it still can't
-    // resolve anything, that propagates and fails the invocation, matching apikey.allow's
-    // fail-closed posture when UAM is unreachable during auth.
-    private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
-            Authentication authentication,
-            String ncaId) {
-        if (authentication instanceof JwtAuthenticationToken) {
-            return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
-        }
-        if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
-            return Optional.empty();
-        }
-        if (principal.getAttribute(ApiKeyValidationResult.POLICY_RESULT_ATTRIBUTE)
-                instanceof ApiKeyValidationResult result) {
-            return Optional.ofNullable(result.accountTokenRateLimit());
-        }
-        return Optional.empty();
     }
 
     private void validateLlmGatewayAuth(String requiredScope) {

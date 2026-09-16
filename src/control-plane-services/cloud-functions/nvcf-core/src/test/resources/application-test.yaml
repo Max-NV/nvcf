@@ -235,6 +235,9 @@ nvcf:
     base-url: http://localhost:9093
   ssa:
     base-url: http://localhost:9112
+    # Off by default in production (see SsaService) until nvcf-uam-policies MR !30 merges;
+    # tests turn it on to exercise the real lookup/cache/fail-closed behavior.
+    tiered-rate-limit-enabled: true
   account:
     max-functions-allowed: 50
     max-tasks-allowed: 50

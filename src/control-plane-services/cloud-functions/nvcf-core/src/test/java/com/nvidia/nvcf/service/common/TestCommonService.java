@@ -26,7 +26,6 @@ import com.nvidia.nvcf.service.apikeys.ApiKeysService;
 import com.nvidia.nvcf.service.azp.AuthorizedPartiesService;
 import com.nvidia.nvcf.service.registry.RegistryArtifactService;
 import com.nvidia.nvcf.service.ssa.SsaService;
-import com.nvidia.nvcf.util.MockSsaServer;
 import jakarta.annotation.Nonnull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,9 +68,6 @@ public class TestCommonService {
         // use of MockApiKeysServer with different scopes causes the apikeys cache to dirty
         apiKeysService.invalidateCache();
         ssaService.invalidateCache();
-        // a test that stubs MockSsaServer to a non-default response (e.g. unavailable) must
-        // not leave that stub live for the next test
-        MockSsaServer.resetToDefault();
 
         authorizedPartiesService.clearPublicFunctionCache();
         functionsRepository.deleteAll();

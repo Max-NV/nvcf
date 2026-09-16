@@ -24,22 +24,23 @@ import com.google.common.annotations.VisibleForTesting;
 import com.nvidia.boot.exceptions.UpstreamException;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult.RateLimitAttributes;
 import java.time.Duration;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SsaService {
     private static final String MESG_RATE_LIMIT_FROM_BACKUP_CACHE =
             "Returning tiered rate limit from backup cache as UAM is not reachable - '{}'";
     private static final String MESG_RATE_LIMIT_NOT_IN_BACKUP_CACHE =
             "UAM is not reachable and tiered rate limit is not in backup cache anymore - '{}'";
     private static final String MESG_TIERED_RATE_LIMIT = "Tiered rate limit for ncaId '{}': '{}'";
+    private static final RateLimitAttributes NO_RATE_LIMIT = new RateLimitAttributes(null, null);
 
     private final SsaClient ssaClient;
+    private final boolean tieredRateLimitEnabled;
     private final LoadingCache<String, RateLimitAttributes> tieredRateLimitCache =
             Caffeine.newBuilder()
                     .maximumSize(512).expireAfterWrite(Duration.ofMinutes(1))
@@ -50,6 +51,16 @@ public class SsaService {
                     .maximumSize(512).expireAfterWrite(Duration.ofMinutes(60))
                     .scheduler(Scheduler.systemScheduler())
                     .build();
+
+    // ssa.allow's PIP (data.tiered_rate_val) isn't registered in UAM yet - nvcf-uam-policies
+    // MR !30 is unmerged and the real PIP source is still unknown. Default off so deploying
+    // this code doesn't fail-close every LLM invocation; flip once that dependency lands.
+    public SsaService(
+            SsaClient ssaClient,
+            @Value("${nvcf.ssa.tiered-rate-limit-enabled:false}") boolean tieredRateLimitEnabled) {
+        this.ssaClient = ssaClient;
+        this.tieredRateLimitEnabled = tieredRateLimitEnabled;
+    }
 
     private RateLimitAttributes fetchTieredRateLimit(String ncaId) {
         try {
@@ -65,9 +76,12 @@ public class SsaService {
         }
     }
 
-    // Throws if UAM is unreachable and the value isn't backup-cached either; callers should
-    // treat that as "no rate limit resolved," not fail the request.
+    // Throws if UAM is unreachable and the value isn't backup-cached either; matches SAK's
+    // fail-closed behavior on lookup failure rather than silently omitting the rate limit.
     public RateLimitAttributes getTieredRateLimit(String ncaId) {
+        if (!tieredRateLimitEnabled) {
+            return NO_RATE_LIMIT;
+        }
         return tieredRateLimitCache.get(ncaId);
     }
 

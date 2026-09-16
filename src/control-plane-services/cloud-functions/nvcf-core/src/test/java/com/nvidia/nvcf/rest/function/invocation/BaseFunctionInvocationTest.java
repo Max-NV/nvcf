@@ -205,6 +205,9 @@ public class BaseFunctionInvocationTest {
     void reset() {
         testCommonService.reset();
         MockApiKeysServer.resetToDefault();
+        // a test that stubs MockSsaServer to a non-default response (e.g. unavailable) must
+        // not leave that stub live for the next test
+        MockSsaServer.resetToDefault();
         testAccountService.deleteAccount(TEST_PUBLIC_FUNCTION_NCA_ID);
         testQueueService.clearQueues();
     }

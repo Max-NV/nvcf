@@ -48,33 +48,10 @@ import org.springframework.util.StringUtils;
 public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
                               @JsonProperty("ncaId") String ncaId,
                               @JsonProperty("ownerId") String ownerId,
-                              @JsonProperty("policy") Policy policy,
-                              @JsonProperty("accountTokenRateLimit") @Nullable
-                              RateLimitAttributes accountTokenRateLimit) {
+                              @JsonProperty("policy") Policy policy) {
 
     public static final String FUNCTION_ACCESS_ATTRIBUTE = "function_access";
     public static final String POLICY_RESULT_ATTRIBUTE = "policy_result";
-
-    public ApiKeyValidationResult(
-            boolean allowed,
-            String ncaId,
-            String ownerId,
-            Policy policy) {
-        this(allowed, ncaId, ownerId, policy, null);
-    }
-
-    public ApiKeyValidationResult(
-            boolean allowed,
-            String ncaId,
-            String ownerId,
-            Policy policy,
-            @Nullable RateLimitAttributes accountTokenRateLimit) {
-        this.allowed = allowed;
-        this.ncaId = ncaId;
-        this.ownerId = ownerId;
-        this.policy = policy;
-        this.accountTokenRateLimit = accountTokenRateLimit;
-    }
 
     public record Resource(@JsonProperty("type") String type, @JsonProperty("id") String id) {
 
@@ -88,10 +65,12 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
     }
 
     /**
-     * Account-scoped rate limit, resolved from the ncaId and attached to the SAK/apikey
-     * evaluation result (not stored or computed by NVCF). Absent when none applies. Fields
+     * Account-scoped rate limit, resolved by ncaId (not stored or computed by NVCF). Fields
      * use the same "&lt;value&gt;-&lt;unit&gt;" format as the gateway's own tokenRateLimit,
-     * not a raw quota number. UAM contract pending; this is a mocked shape in NVCF API for now.
+     * not a raw quota number. Not part of {@link ApiKeyValidationResult} itself - both SAK
+     * and SSA-JWT callers resolve this the same way, a second lookup by ncaId after auth
+     * succeeds (see {@link com.nvidia.nvcf.service.ssa.SsaService}), not by reading it off
+     * their own auth evaluation result.
      */
     public record RateLimitAttributes(
             @JsonProperty("inputTokenRateLimit") @Nullable String inputTokenRateLimit,
