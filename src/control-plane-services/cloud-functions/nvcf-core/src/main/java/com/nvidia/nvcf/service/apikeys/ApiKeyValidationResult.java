@@ -39,19 +39,26 @@ import org.springframework.util.StringUtils;
 /**
  * Represents the result of ApiKey validation.
  *
- * @param allowed    indicates whether the current request should be allowed to proceed
- * @param ncaId      NVIDIA Cloud Account(NCA) id
- * @param ownerId    for Service Keys, this parameter will be NCA Id; for Personal Keys,
- *                   this parameter will be OIDC Id
- * @param policy     resource types and scopes
+ * @param allowed               indicates whether the current request should be allowed to proceed
+ * @param ncaId                 NVIDIA Cloud Account(NCA) id
+ * @param ownerId               for Service Keys, this parameter will be NCA Id; for Personal Keys,
+ *                              this parameter will be OIDC Id
+ * @param policy                resource types and scopes
+ * @param accountTokenRateLimit account-scoped LLM token rate limit, resolved by sak.rego
+ *                              itself (not stored or computed by NVCF); absent when none applies
  */
 public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
                               @JsonProperty("ncaId") String ncaId,
                               @JsonProperty("ownerId") String ownerId,
-                              @JsonProperty("policy") Policy policy) {
+                              @JsonProperty("policy") Policy policy,
+                              @JsonProperty("accountTokenRateLimit") @Nullable RateLimitAttributes accountTokenRateLimit) {
 
     public static final String FUNCTION_ACCESS_ATTRIBUTE = "function_access";
     public static final String POLICY_RESULT_ATTRIBUTE = "policy_result";
+
+    public ApiKeyValidationResult(boolean allowed, String ncaId, String ownerId, Policy policy) {
+        this(allowed, ncaId, ownerId, policy, null);
+    }
 
     public record Resource(@JsonProperty("type") String type, @JsonProperty("id") String id) {
 
@@ -65,12 +72,8 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
     }
 
     /**
-     * Account-scoped rate limit, resolved by ncaId (not stored or computed by NVCF). Fields
-     * use the same "&lt;value&gt;-&lt;unit&gt;" format as the gateway's own tokenRateLimit,
-     * not a raw quota number. Not part of {@link ApiKeyValidationResult} itself - both SAK
-     * and SSA-JWT callers resolve this the same way, a second lookup by ncaId after auth
-     * succeeds (see {@link com.nvidia.nvcf.service.ssa.SsaService}), not by reading it off
-     * their own auth evaluation result.
+     * Fields use the same "&lt;value&gt;-&lt;unit&gt;" format as the gateway's own
+     * tokenRateLimit, not a raw quota number.
      */
     public record RateLimitAttributes(
             @JsonProperty("inputTokenRateLimit") @Nullable String inputTokenRateLimit,

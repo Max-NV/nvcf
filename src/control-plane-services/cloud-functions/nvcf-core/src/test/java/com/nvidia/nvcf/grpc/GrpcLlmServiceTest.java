@@ -210,10 +210,8 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
         setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
-                    List.of(SCOPE_INVOKE_FUNCTION), true);
-        // apikey.allow doesn't carry the rate limit - it's the same ncaId-keyed lookup
-        // JWT auth uses, so it must land here too.
-        MockSsaServer.setTieredRateLimitResponse(new RateLimitAttributes("5000-M", "1000-M"));
+                    List.of(SCOPE_INVOKE_FUNCTION), true,
+                    new RateLimitAttributes("5000-M", "1000-M"));
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = "nvapi-stg-some-key";
 
@@ -223,6 +221,23 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         assertThat(response.getAccountInputTokenRateLimit()).isEqualTo("5000-M");
         assertThat(response.hasAccountOutputTokenRateLimit()).isTrue();
         assertThat(response.getAccountOutputTokenRateLimit()).isEqualTo("1000-M");
+    }
+
+    @Test
+    void authLlmInvocation_noAccountRateLimitWhenApiKeyAuthCarriesNone() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    List.of(new Resource("account-functions", "*")),
+                    List.of(SCOPE_INVOKE_FUNCTION), true);
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = "nvapi-stg-some-key";
+
+        var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
+
+        assertThat(response.hasAccountInputTokenRateLimit()).isFalse();
+        assertThat(response.hasAccountOutputTokenRateLimit()).isFalse();
     }
 
     @Test
