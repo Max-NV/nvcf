@@ -277,6 +277,23 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         assertThat(response.hasAccountOutputTokenRateLimit()).isFalse();
     }
 
+    @Test
+    void authLlmInvocation_failsClosedWhenSsaJwtRateLimitLookupUnavailable() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        // No prior successful lookup for this ncaId, so SsaService's backup cache is also
+        // empty - matches apikey.allow's fail-closed posture when UAM is unreachable.
+        MockSsaServer.setUnavailable();
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt(TEST_CLIENT_SUBJECT,
+                                                          List.of(SCOPE_INVOKE_FUNCTION), 100);
+
+        assertThatThrownBy(() -> callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID))
+                .isInstanceOf(StatusRuntimeException.class)
+                .hasMessageContaining("UNAVAILABLE");
+    }
+
     // ---------------------------------------------------------------------------
     // LLM spec field tests
     // ---------------------------------------------------------------------------

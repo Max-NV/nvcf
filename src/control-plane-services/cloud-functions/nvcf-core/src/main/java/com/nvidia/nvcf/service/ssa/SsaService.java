@@ -65,12 +65,8 @@ public class SsaService {
         }
     }
 
-    /**
-     * Resolves the tiered token rate limit for an already-authenticated SSA-JWT caller's
-     * ncaId. Throws if UAM is unreachable and the value is not in the backup cache either -
-     * callers resolving this as an optional rate-limit enrichment (not an auth decision)
-     * should catch and treat that as "no rate limit resolved" rather than fail the request.
-     */
+    // Throws if UAM is unreachable and the value isn't backup-cached either; callers should
+    // treat that as "no rate limit resolved," not fail the request.
     public RateLimitAttributes getTieredRateLimit(String ncaId) {
         return tieredRateLimitCache.get(ncaId);
     }

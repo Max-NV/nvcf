@@ -160,38 +160,23 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         }
     }
 
-    /**
-     * Resolves the account-scoped rate limit for the authenticated caller, however it was
-     * authenticated. NVCF does not compute or store this; absent when none applies.
-     *
-     * <p>The apikey (nvapi-) path reads it off the SAK/apikey evaluation result already
-     * attached to the {@link Authentication} during {@link #validateInvokeFunctionAuth} - see
-     * {@link com.nvidia.nvcf.service.apikeys.ApiKeysService}. SSA-JWT-authenticated callers
-     * have no such attribute to read (JWT validation and the tiered-rate lookup are two
-     * separate, unrelated steps - see {@link com.nvidia.nvcf.service.ssa.SsaService}), so
-     * that path makes its own UAM call by the ncaId already resolved via
-     * {@link com.nvidia.nvcf.service.account.AccountService#getNcaId}. That call is a rate-
-     * limit enrichment, not an authorization decision; a failure there must not fail the
-     * invocation, so any exception is caught and treated as "no rate limit resolved."
-     */
+    // apikey path reads the rate limit off the Authentication attached during
+    // validateInvokeFunctionAuth; SSA-JWT has no such attribute, so it calls SsaService
+    // directly by ncaId. SsaService's own cache absorbs brief UAM outages; if it still can't
+    // resolve anything, that propagates and fails the invocation, matching apikey.allow's
+    // fail-closed posture when UAM is unreachable during auth.
     private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
             Authentication authentication,
             String ncaId) {
         if (authentication instanceof JwtAuthenticationToken) {
-            try {
-                return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
-            } catch (RuntimeException ex) {
-                log.warn("Failed to resolve tiered rate limit for ncaId '{}': '{}'",
-                        ncaId, ex.getMessage());
-                return Optional.empty();
-            }
+            return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
         }
         if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
             return Optional.empty();
         }
         if (principal.getAttribute(ApiKeyValidationResult.POLICY_RESULT_ATTRIBUTE)
                 instanceof ApiKeyValidationResult result) {
-            return Optional.ofNullable(result.rateLimit());
+            return Optional.ofNullable(result.accountTokenRateLimit());
         }
         return Optional.empty();
     }

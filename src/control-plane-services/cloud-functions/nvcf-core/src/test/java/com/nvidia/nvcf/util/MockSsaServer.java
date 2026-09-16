@@ -64,6 +64,12 @@ public class MockSsaServer {
                                             .withBody(responseBytes)));
     }
 
+    public static void setUnavailable() {
+        mockSsaServer.stubFor(
+                post(urlPathEqualTo("/v1/namespaces/nvcf/evaluations/ssa.allow"))
+                        .willReturn(aResponse().withStatus(503)));
+    }
+
     public static void resetToDefault() {
         setTieredRateLimitResponse(new RateLimitAttributes(null, null));
     }

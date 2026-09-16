@@ -49,7 +49,8 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
                               @JsonProperty("ncaId") String ncaId,
                               @JsonProperty("ownerId") String ownerId,
                               @JsonProperty("policy") Policy policy,
-                              @JsonProperty("rateLimit") @Nullable RateLimitAttributes rateLimit) {
+                              @JsonProperty("accountTokenRateLimit") @Nullable
+                              RateLimitAttributes accountTokenRateLimit) {
 
     public static final String FUNCTION_ACCESS_ATTRIBUTE = "function_access";
     public static final String POLICY_RESULT_ATTRIBUTE = "policy_result";
@@ -67,12 +68,12 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
             String ncaId,
             String ownerId,
             Policy policy,
-            @Nullable RateLimitAttributes rateLimit) {
+            @Nullable RateLimitAttributes accountTokenRateLimit) {
         this.allowed = allowed;
         this.ncaId = ncaId;
         this.ownerId = ownerId;
         this.policy = policy;
-        this.rateLimit = rateLimit;
+        this.accountTokenRateLimit = accountTokenRateLimit;
     }
 
     public record Resource(@JsonProperty("type") String type, @JsonProperty("id") String id) {

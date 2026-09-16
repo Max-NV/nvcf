@@ -38,13 +38,8 @@ import reactor.util.retry.Retry;
 import reactor.util.retry.RetryBackoffSpec;
 import tools.jackson.databind.json.JsonMapper;
 
-/**
- * Calls UAM's SSA-JWT policy evaluation to resolve the per-account tiered token rate limit,
- * by ncaId. Kept separate from {@link com.nvidia.nvcf.service.apikeys.ApiKeysClient}: that
- * client's name and shape are SAK/apikey specific (it introspects a raw key), while this one
- * is called with an ncaId the caller already resolved from an already-authenticated SSA JWT -
- * there is no identity to introspect here, just a keyed PIP lookup.
- */
+// Separate from ApiKeysClient: that name/shape is SAK-specific (introspects a raw key); this
+// is called with an already-resolved ncaId, so it's just a keyed PIP lookup.
 @Service
 @RefreshScope
 @Slf4j
@@ -69,21 +64,29 @@ public class SsaClient {
     private final String evaluationUri;
     private final String requestPropertyName;
 
+    // ssa.allow is expected to be served by the same evaluations gateway as apikey.allow, so
+    // every property here defaults to that client's config; override the nvcf.ssa.*/
+    // spring.security.oauth2.client.registration.ssa.* properties if that stops being true.
     public SsaClient(
-            @Value("${nvcf.ssa.base-url}") String baseUrl,
+            @Value("${nvcf.ssa.base-url:${nvcf.api-keys.base-url}}") String baseUrl,
             @Value("${nvcf.ssa.evaluation-uri:/v1/namespaces/nvcf/evaluations/ssa.allow}")
             String evaluationUri,
-            // matches the input.<name>_key naming the ssa.allow policy expects - see the
-            // comment in nvcf-uam-policies' policy/ssa/ssa.rego (placeholder pending the
-            // real PIP registration)
+            // matches the input.<name>_key naming ssa.allow expects - see the comment in
+            // nvcf-uam-policies' policy/ssa/ssa.rego (placeholder pending the real PIP registration)
             @Value("${nvcf.ssa.request-property-name:tiered_rate_key}")
             String requestPropertyName,
-            @Value("${spring.security.oauth2.client.registration.ssa.client-id}")
+            @Value("${spring.security.oauth2.client.registration.ssa.client-id:"
+                    + "${spring.security.oauth2.client.registration.api-keys.client-id}}")
             String clientId,
-            @Value("${spring.security.oauth2.client.registration.ssa.client-secret}")
+            @Value("${spring.security.oauth2.client.registration.ssa.client-secret:"
+                    + "${spring.security.oauth2.client.registration.api-keys.client-secret}}")
             String clientSecret,
-            @Value("${spring.security.oauth2.client.registration.ssa.scope}") String scope,
-            @Value("${spring.security.oauth2.client.provider.ssa.token-uri}") String tokenUri,
+            @Value("${spring.security.oauth2.client.registration.ssa.scope:"
+                    + "${spring.security.oauth2.client.registration.api-keys.scope}}")
+            String scope,
+            @Value("${spring.security.oauth2.client.provider.ssa.token-uri:"
+                    + "${spring.security.oauth2.client.provider.api-keys.token-uri}}")
+            String tokenUri,
             Optional<StaticClientSsaProperties> staticClientSsaProperties,
             WebClient.Builder webClientBuilder,
             JsonMapper jsonMapper) {
@@ -113,12 +116,7 @@ public class SsaClient {
                                                  tokenUri, clientId, clientSecret, scope));
     }
 
-    /**
-     * Resolves the tiered token rate limit for an ncaId already established by SSA-JWT
-     * authentication. Unlike {@code apikey.allow}, this is a data lookup, not an
-     * authorization gate: an empty/absent result just means no tier is configured for that
-     * account, not that the caller is forbidden.
-     */
+    // Unlike apikey.allow, an empty/absent result means no tier configured, not forbidden.
     public ApiKeyValidationResult.RateLimitAttributes fetchTieredRateLimit(String ncaId) {
         return webClient
                 .post()
