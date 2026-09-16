@@ -33,6 +33,7 @@ import com.nvidia.nvcf.service.function.FunctionLlmService;
 import com.nvidia.nvcf.service.function.FunctionMapperService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService.FunctionContext;
+import com.nvidia.nvcf.service.ssa.SsaService;
 import com.nvidia.nvcf.service.token.GrpcAuthService;
 import com.nvidia.nvcf.service.token.GrpcTokenService;
 import com.nvidia.nvcf.service.token.GrpcTokenService.NvcfIssuedToken.TokenType;
@@ -46,6 +47,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationToken;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 @Slf4j
 @GrpcService
@@ -64,6 +66,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     private final FunctionMapperService functionMapperService;
     private final FunctionLlmService functionLlmService;
     private final FunctionInvocationValidationService functionInvocationValidationService;
+    private final SsaService ssaService;
 
     @Override
     public void authLlmInvocation(
@@ -91,7 +94,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         var functionModels = functionMapperService.toFunctionModels(
                 first.targetFunction().getModelSpecs());
         var resolvedPriority = resolvePriority(first);
-        var accountRateLimit = resolveAccountRateLimit(authentication);
+        var accountRateLimit = resolveAccountRateLimit(authentication, ncaId);
 
         var responseBuilder = AuthLlmInvokeResponse.newBuilder()
                 .setRoutingKey(request.getRoutingKey())
@@ -158,20 +161,31 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     }
 
     /**
-     * Reads the account-scoped rate limit already resolved and attached to the SAK/apikey
-     * evaluation result during {@link #validateInvokeFunctionAuth}, if the caller authenticated
-     * that way. NVCF does not compute or store this; absent when none applies, or the caller
-     * authenticated by a mechanism that doesn't carry one.
+     * Resolves the account-scoped rate limit for the authenticated caller, however it was
+     * authenticated. NVCF does not compute or store this; absent when none applies.
      *
-     * <p>Only the apikey (nvapi-) path carries this today, since it is the only auth path with
-     * an existing per-token UAM evaluation ({@code apikey.allow}) to attach it to - see
-     * {@link com.nvidia.nvcf.service.apikeys.ApiKeysService}. JWT-authenticated invocations
-     * (see {@link com.nvidia.nvcf.service.account.AccountService#getNcaId}) resolve an ncaId
-     * through a different path with no equivalent UAM hook, so they never get an account rate
-     * limit here. Tracked as a gap pending the UAM/rate-limit contract.
+     * <p>The apikey (nvapi-) path reads it off the SAK/apikey evaluation result already
+     * attached to the {@link Authentication} during {@link #validateInvokeFunctionAuth} - see
+     * {@link com.nvidia.nvcf.service.apikeys.ApiKeysService}. SSA-JWT-authenticated callers
+     * have no such attribute to read (JWT validation and the tiered-rate lookup are two
+     * separate, unrelated steps - see {@link com.nvidia.nvcf.service.ssa.SsaService}), so
+     * that path makes its own UAM call by the ncaId already resolved via
+     * {@link com.nvidia.nvcf.service.account.AccountService#getNcaId}. That call is a rate-
+     * limit enrichment, not an authorization decision; a failure there must not fail the
+     * invocation, so any exception is caught and treated as "no rate limit resolved."
      */
     private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
-            Authentication authentication) {
+            Authentication authentication,
+            String ncaId) {
+        if (authentication instanceof JwtAuthenticationToken) {
+            try {
+                return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
+            } catch (RuntimeException ex) {
+                log.warn("Failed to resolve tiered rate limit for ncaId '{}': '{}'",
+                        ncaId, ex.getMessage());
+                return Optional.empty();
+            }
+        }
         if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
             return Optional.empty();
         }
