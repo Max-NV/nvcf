@@ -156,10 +156,14 @@ public class GrpcLlmService extends LlmGatewayImplBase {
             return Optional.empty();
         }
         if (principal.getAttribute(ApiKeyValidationResult.POLICY_RESULT_ATTRIBUTE)
-                instanceof ApiKeyValidationResult result) {
-            return Optional.ofNullable(result.accountTokenRateLimit());
+                instanceof ApiKeyValidationResult result
+                && result.accountTokenRateLimit() != null) {
+            return Optional.of(result.accountTokenRateLimit());
         }
-        return Optional.empty();
+        // sak.rego on an older deploy that doesn't populate accountTokenRateLimit yet -
+        // fall back to the standalone lookup instead of silently skipping enforcement
+        // during a policy/nvcf-core rollout skew.
+        return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
     }
 
     private Optional<Long> resolvePriority(FunctionContext context) {
