@@ -219,6 +219,36 @@ func (s *RateLimiterTestSuite) TestBucketsRefillOverTime() {
 	s.Equal(int64(70), res3.CurrentValue)
 }
 
+func (s *RateLimiterTestSuite) TestBucketsRefillOverTimeDoesNotOverflowForLargeRateAndLongElapsed() {
+	var (
+		// A valid "5000000000-MO" account limit: elapsed(ms) * rate overflows
+		// int64 before the /periodMs division brings it back down, unless the
+		// multiply-divide is done at higher precision.
+		rl = RateLimit{
+			Limit:  5_000_000_000,
+			Period: 30 * 24 * time.Hour, // MO: fixed 30-day month
+		}
+		key = "rl:test:refill_overflow"
+	)
+	limiter := s.newLimiter()
+
+	res, err := limiter.CheckLimit(s.ctx, key, rl, 5_000_000_000, false, "", true)
+	s.Require().NoError(err)
+	s.True(res.Allowed())
+	s.Equal(int64(5_000_000_000), res.CurrentValue)
+	s.Equal(int64(0), res.RemainingValue())
+
+	s.advance(29 * 24 * time.Hour)
+
+	// 29/30 of the period elapsed: refill = 2_505_600_000 * 5_000_000_000 /
+	// 2_592_000_000 = 4_833_333_333 (floor). A naive elapsed*rate overflow
+	// produces a negative value instead.
+	res2, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
+	s.Require().NoError(err)
+	s.True(res2.Allowed())
+	s.Equal(int64(4_833_333_333), res2.CurrentValue)
+}
+
 func (s *RateLimiterTestSuite) TestFailOpenAllowsOnStoreError() {
 	var (
 		rl = RateLimit{

@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/bits"
 	"math/rand/v2"
 	"time"
 
@@ -236,11 +237,17 @@ func (rl *rateLimiter) leakyBucket(
 		}
 		var refill int64
 		if periodMs > 0 {
-			refill = elapsed * rate / periodMs
+			refill = mulDivInt64(elapsed, rate, periodMs)
 		}
-		currentValue := value + refill
-		if currentValue > rate {
+		// value is always <= rate (an invariant maintained below and on write),
+		// so rate-value can't be negative; comparing against it instead of
+		// computing value+refill directly avoids overflowing the sum itself
+		// when refill is many multiples of rate (a long-idle bucket).
+		var currentValue int64
+		if refill > rate-value {
 			currentValue = rate
+		} else {
+			currentValue = value + refill
 		}
 		allowed := currentValue >= tokensRequested
 
@@ -276,6 +283,27 @@ func (rl *rateLimiter) leakyBucket(
 		}
 		return currentValue, swapped, nil
 	})
+}
+
+// mulDivInt64 computes a*b/c for non-negative a, b, c without the a*b
+// intermediate overflowing int64 - a large rate (bounded at int64 max by
+// policy validation) times a multi-day elapsed gap regularly exceeds
+// int64 even though the final quotient comfortably fits. Uses the 128-bit
+// multiply/divide primitives from math/bits rather than math/big to stay
+// allocation-free on this per-request hot path.
+func mulDivInt64(a, b, c int64) int64 {
+	hi, lo := bits.Mul64(uint64(a), uint64(b))
+	if hi >= uint64(c) {
+		// Quotient itself would overflow 64 bits. The caller compares this
+		// against a much smaller rate/remaining-capacity value and saturates,
+		// so returning MaxInt64 here is a safe upper bound, not a wraparound.
+		return math.MaxInt64
+	}
+	q, _ := bits.Div64(hi, lo, uint64(c))
+	if q > uint64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	return int64(q)
 }
 
 // casRetry drives an optimistic-concurrency closure. attempt returns
