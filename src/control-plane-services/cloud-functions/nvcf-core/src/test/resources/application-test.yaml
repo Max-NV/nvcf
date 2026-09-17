@@ -235,9 +235,10 @@ nvcf:
     base-url: http://localhost:9093
   service-account:
     base-url: http://localhost:9112
-    # Off by default in production (see ServiceAccountService) until the companion policy
-    # change merges; tests turn it on to exercise the real lookup/cache/fail-closed behavior.
-    tiered-rate-limit-enabled: true
+  # Off by default in production (see ServiceAccountService/GrpcLlmService) until the
+  # companion policy change merges; tests turn it on to exercise the real
+  # lookup/cache/fail-closed behavior on both the JWT and API-key paths.
+  account-token-rate-limit-enabled: true
   account:
     max-functions-allowed: 50
     max-tasks-allowed: 50

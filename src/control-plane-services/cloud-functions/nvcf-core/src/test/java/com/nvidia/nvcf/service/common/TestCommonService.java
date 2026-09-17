@@ -23,6 +23,7 @@ import com.nvidia.nvcf.persistence.function.FunctionsDeploymentRepository;
 import com.nvidia.nvcf.persistence.function.FunctionsRepository;
 import com.nvidia.nvcf.persistence.function.GpuSpecificationsRepository;
 import com.nvidia.nvcf.service.apikeys.ApiKeysService;
+import com.nvidia.nvcf.service.apikeys.LlmApiKeyService;
 import com.nvidia.nvcf.service.azp.AuthorizedPartiesService;
 import com.nvidia.nvcf.service.registry.RegistryArtifactService;
 import com.nvidia.nvcf.service.serviceaccount.ServiceAccountService;
@@ -53,6 +54,9 @@ public class TestCommonService {
     private ServiceAccountService serviceAccountService;
 
     @Autowired
+    private LlmApiKeyService llmApiKeyService;
+
+    @Autowired
     private IcmsClient icmsClient;
 
     @Autowired
@@ -68,6 +72,7 @@ public class TestCommonService {
         // use of MockApiKeysServer with different scopes causes the apikeys cache to dirty
         apiKeysService.invalidateCache();
         serviceAccountService.invalidateCache();
+        llmApiKeyService.invalidateCache();
 
         authorizedPartiesService.clearPublicFunctionCache();
         functionsRepository.deleteAll();

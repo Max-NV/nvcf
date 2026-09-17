@@ -22,6 +22,7 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
 import com.google.common.annotations.VisibleForTesting;
 import jakarta.annotation.Nullable;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,10 +31,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Getter;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.DefaultOAuth2AuthenticatedPrincipal;
+import org.springframework.security.oauth2.core.OAuth2AccessToken;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
+import org.springframework.security.oauth2.core.OAuth2TokenIntrospectionClaimNames;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthentication;
 import org.springframework.util.StringUtils;
 
 /**
@@ -95,6 +100,17 @@ public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
                 .map(scope -> (GrantedAuthority) new SimpleGrantedAuthority("apikey:" + scope))
                 .toList();
         return new DefaultOAuth2AuthenticatedPrincipal(ownerId, resourcesAttribute, scopes);
+    }
+
+    // Matches AuthManagerResolverConfiguration's apiKeyConverter(), for callers that bypass
+    // the shared AuthenticationManagerResolver.
+    @JsonIgnore
+    public Authentication toBearerTokenAuthentication(String rawToken) {
+        var principal = getOAuth2Principal();
+        Instant iat = principal.getAttribute(OAuth2TokenIntrospectionClaimNames.IAT);
+        Instant exp = principal.getAttribute(OAuth2TokenIntrospectionClaimNames.EXP);
+        var accessToken = new OAuth2AccessToken(OAuth2AccessToken.TokenType.BEARER, rawToken, iat, exp);
+        return new BearerTokenAuthentication(principal, accessToken, principal.getAuthorities());
     }
 
     public static class ApiKeyFunctionVersionSpecifier {

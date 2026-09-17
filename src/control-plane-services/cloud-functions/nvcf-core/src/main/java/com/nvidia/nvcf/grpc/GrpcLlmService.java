@@ -21,7 +21,9 @@ import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_INVOCATION;
 import static com.nvidia.nvcf.util.NvcfConstants.SCOPE_LLM_CHECK_WORKER;
 
 import com.nvidia.boot.exceptions.BadRequestException;
+import com.nvidia.boot.exceptions.ForbiddenException;
 import com.nvidia.boot.exceptions.UnauthorizedException;
+import com.nvidia.nvcf.grpc.auth.SecurityExpression;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeRequest;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmInvokeResponse;
 import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerRequest;
@@ -29,6 +31,7 @@ import com.nvidia.nvcf.proto.llm_gateway.AuthLlmWorkerResponse;
 import com.nvidia.nvcf.proto.llm_gateway.LlmGatewayGrpc.LlmGatewayImplBase;
 import com.nvidia.nvcf.service.account.AccountService;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult;
+import com.nvidia.nvcf.service.apikeys.LlmApiKeyService;
 import com.nvidia.nvcf.service.function.FunctionLlmService;
 import com.nvidia.nvcf.service.function.FunctionMapperService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService;
@@ -40,9 +43,9 @@ import com.nvidia.nvcf.service.token.GrpcTokenService.NvcfIssuedToken.TokenType;
 import io.grpc.stub.StreamObserver;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.devh.boot.grpc.server.service.GrpcService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
@@ -51,7 +54,6 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 
 @Slf4j
 @GrpcService
-@RequiredArgsConstructor
 public class GrpcLlmService extends LlmGatewayImplBase {
 
     private static final String MESG_INVALID_LLM_CONFIG =
@@ -59,6 +61,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     private static final String MESG_INVALID_ROUTING_KEY =
             "Function id '%s': Invalid routing key - model must be prefixed with"
                     + " a valid function ID (UUID)";
+    private static final String API_KEY_PREFIX = "nvapi-";
 
     private final GrpcAuthService grpcAuthService;
     private final GrpcTokenService grpcTokenService;
@@ -67,6 +70,29 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     private final FunctionLlmService functionLlmService;
     private final FunctionInvocationValidationService functionInvocationValidationService;
     private final ServiceAccountService serviceAccountService;
+    private final LlmApiKeyService llmApiKeyService;
+    private final boolean accountTokenRateLimitEnabled;
+
+    public GrpcLlmService(
+            GrpcAuthService grpcAuthService,
+            GrpcTokenService grpcTokenService,
+            AccountService accountService,
+            FunctionMapperService functionMapperService,
+            FunctionLlmService functionLlmService,
+            FunctionInvocationValidationService functionInvocationValidationService,
+            ServiceAccountService serviceAccountService,
+            LlmApiKeyService llmApiKeyService,
+            @Value("${nvcf.account-token-rate-limit-enabled:false}") boolean accountTokenRateLimitEnabled) {
+        this.grpcAuthService = grpcAuthService;
+        this.grpcTokenService = grpcTokenService;
+        this.accountService = accountService;
+        this.functionMapperService = functionMapperService;
+        this.functionLlmService = functionLlmService;
+        this.functionInvocationValidationService = functionInvocationValidationService;
+        this.serviceAccountService = serviceAccountService;
+        this.llmApiKeyService = llmApiKeyService;
+        this.accountTokenRateLimitEnabled = accountTokenRateLimitEnabled;
+    }
 
     @Override
     public void authLlmInvocation(
@@ -189,10 +215,26 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         grpcAuthService.validateBearer(bearer, requiredScope);
     }
 
+    // Bypasses the shared AuthenticationManagerResolver (always apikey.allow) for API keys
+    // specifically, so only this RPC can reach the rate-limit-carrying llm_allow evaluation.
     private Authentication validateInvokeFunctionAuth(
             AuthLlmInvokeRequest request) {
-        var bearer = new BearerTokenAuthenticationToken(request.getClientAuthorizationToken());
+        var token = request.getClientAuthorizationToken();
+        if (accountTokenRateLimitEnabled && token.startsWith(API_KEY_PREFIX)) {
+            return authenticateApiKeyForLlmInvocation(token);
+        }
+        var bearer = new BearerTokenAuthenticationToken(token);
         return grpcAuthService.validateBearer(bearer, SCOPE_INVOKE_FUNCTION,
                                               "apikey:" + SCOPE_INVOKE_FUNCTION);
+    }
+
+    private Authentication authenticateApiKeyForLlmInvocation(String apiKey) {
+        var result = llmApiKeyService.resolveForLlmInvocation(apiKey);
+        var authentication = result.toBearerTokenAuthentication(apiKey);
+        if (!new SecurityExpression(authentication)
+                .hasAnyAuthority(SCOPE_INVOKE_FUNCTION, "apikey:" + SCOPE_INVOKE_FUNCTION)) {
+            throw new ForbiddenException("missing requested authorities");
+        }
+        return authentication;
     }
 }

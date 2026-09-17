@@ -57,7 +57,7 @@ public class ServiceAccountService {
     // LLM invocation; flip once that dependency lands.
     public ServiceAccountService(
             ServiceAccountClient serviceAccountClient,
-            @Value("${nvcf.service-account.tiered-rate-limit-enabled:false}") boolean tieredRateLimitEnabled) {
+            @Value("${nvcf.account-token-rate-limit-enabled:false}") boolean tieredRateLimitEnabled) {
         this.serviceAccountClient = serviceAccountClient;
         this.tieredRateLimitEnabled = tieredRateLimitEnabled;
     }

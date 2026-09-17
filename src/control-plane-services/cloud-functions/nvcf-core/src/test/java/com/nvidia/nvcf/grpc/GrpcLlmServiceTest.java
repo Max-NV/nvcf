@@ -19,6 +19,7 @@ package com.nvidia.nvcf.grpc;
 import static com.nvidia.nvcf.IntegrationTestConfiguration.MOCK_OAUTH2_TOKEN_SERVER;
 import static com.nvidia.nvcf.service.token.GrpcTokenService.NvcfIssuedToken.TokenType.WORKER;
 import static com.nvidia.nvcf.util.MockApiKeysServer.setApiKeyValidationResponse;
+import static com.nvidia.nvcf.util.MockApiKeysServer.setLlmApiKeyValidationResponse;
 import static com.nvidia.nvcf.util.MockApiKeysServer.setResponse;
 import static com.nvidia.nvcf.util.TestConstants.FAKE_FUNCTION_ID;
 import static com.nvidia.nvcf.util.TestConstants.MD_KEY_AUTHORIZATION;
@@ -185,9 +186,9 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct",
                 List.of(), null);
-        setResponse(TEST_NCA_ID, TEST_OWNER_ID,
+        setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
-                    List.of(SCOPE_INVOKE_FUNCTION));
+                    List.of(SCOPE_INVOKE_FUNCTION), true, null);
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = "nvapi-stg-some-key";
 
@@ -208,7 +209,7 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+        setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
                     List.of(SCOPE_INVOKE_FUNCTION), true,
                     new RateLimitAttributes("5000-M", "1000-M"));
@@ -228,9 +229,9 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+        setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
-                    List.of(SCOPE_INVOKE_FUNCTION), true);
+                    List.of(SCOPE_INVOKE_FUNCTION), true, null);
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = "nvapi-stg-some-key";
 
@@ -245,12 +246,11 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        // apikey.allow carries no accountTokenRateLimit (older deploy), but the fallback
-        // lookup has a real, distinct value - proves the fallback actually fires and its
-        // result flows through, not just that both paths coincidentally end up null.
-        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+        // llm_allow carries no accountTokenRateLimit (older policy deploy); the fallback has
+        // a distinct value, proving it actually fires and its result flows through.
+        setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                     List.of(new Resource("account-functions", "*")),
-                    List.of(SCOPE_INVOKE_FUNCTION), true);
+                    List.of(SCOPE_INVOKE_FUNCTION), true, null);
         MockServiceAccountServer.setTieredRateLimitResponse(new RateLimitAttributes("2000-M", "500-M"));
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = "nvapi-stg-some-key";
@@ -476,38 +476,38 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
                              FAKE_FUNCTION_ID, UUID.randomUUID(), Status.NOT_FOUND),
                 // 6. apikey auth with wildcard account-functions resource - OK
                 Arguments.of((Supplier<String>) () -> {
-                    setResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                                 List.of(new Resource("account-functions", "*")),
-                                List.of(SCOPE_INVOKE_FUNCTION));
+                                List.of(SCOPE_INVOKE_FUNCTION), true, null);
                     return "nvapi-stg-some-key";
                 }, TEST_FUNCTION_ID, TEST_VERSION_ID_1, Status.OK),
                 // 7. apikey auth with function-scoped resource - OK
                 Arguments.of((Supplier<String>) () -> {
-                    setResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                                 List.of(new Resource("function",
                                                      TEST_FUNCTION_ID + "/*")),
-                                List.of(SCOPE_INVOKE_FUNCTION));
+                                List.of(SCOPE_INVOKE_FUNCTION), true, null);
                     return "nvapi-stg-some-key";
                 }, TEST_FUNCTION_ID, TEST_VERSION_ID_1, Status.OK),
                 // 8. apikey auth missing scope - PERMISSION_DENIED
                 Arguments.of((Supplier<String>) () -> {
-                    setResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                                 List.of(new Resource("account-functions", "*")),
-                                List.of());
+                                List.of(), true, null);
                     return "nvapi-stg-some-key";
                 }, TEST_FUNCTION_ID, TEST_VERSION_ID_1, Status.PERMISSION_DENIED),
                 // 9. apikey auth wrong resource type - PERMISSION_DENIED
                 Arguments.of((Supplier<String>) () -> {
-                    setResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                                 List.of(new Resource("functions", "*")),
-                                List.of(SCOPE_INVOKE_FUNCTION));
+                                List.of(SCOPE_INVOKE_FUNCTION), true, null);
                     return "nvapi-stg-some-key";
                 }, TEST_FUNCTION_ID, TEST_VERSION_ID_1, Status.PERMISSION_DENIED),
                 // 10. apikey with bad key (passes nvapi prefix filter) - PERMISSION_DENIED
                 Arguments.of((Supplier<String>) () -> {
-                    setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    setLlmApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
                                    List.of(new Resource("account-functions", "*")),
-                                   List.of(SCOPE_INVOKE_FUNCTION), false);
+                                   List.of(SCOPE_INVOKE_FUNCTION), false, null);
                     return "nvapi-stg-bad-key";
                 }, TEST_FUNCTION_ID, TEST_VERSION_ID_1, Status.PERMISSION_DENIED),
                 // 11. No client token - UNKNOWN (null token becomes NPE before reaching grpc)
