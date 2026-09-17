@@ -267,4 +267,11 @@ class AuthzServiceTest {
         assertNotNull(response.getAccountTokenRateLimit());
     }
 
+    @Test
+    void resolveTieredRateLimit_shouldReturnPlaceholderRateLimit() {
+        var response = authzService.resolveTieredRateLimit("test-nca-id");
+
+        assertNotNull(response);
+    }
+
 }

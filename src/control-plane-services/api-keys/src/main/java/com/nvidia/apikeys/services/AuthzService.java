@@ -51,6 +51,12 @@ public class AuthzService {
         return builder.build();
     }
 
+    // No rate-limit data source is wired up yet (mirrors the same gap on the managed side), so
+    // always empty for now.
+    public AuthzResponse.AccountTokenRateLimit resolveTieredRateLimit(String ncaId) {
+        return AuthzResponse.AccountTokenRateLimit.builder().build();
+    }
+
     private JsonNode getPolicyByAudience(
             String audienceServiceId, IntrospectionResponse introspectionResponse) {
         JsonNode policies = Optional.ofNullable(introspectionResponse)

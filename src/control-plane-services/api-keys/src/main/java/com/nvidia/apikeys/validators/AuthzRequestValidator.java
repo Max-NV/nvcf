@@ -44,6 +44,14 @@ public class AuthzRequestValidator {
             String namespace, String ruleName, AuthzRequest request) {
         assertValidRuleName(ruleName);
 
+        if (ruleName.equals(nakProperties.getTieredRateLimitRuleName())) {
+            return PolicyEvaluationRequestVo.builder()
+                    .namespace(namespace)
+                    .policyName(ruleName)
+                    .tieredRateKey(getTieredRateKey(request))
+                    .build();
+        }
+
         IntrospectionRequest introspectionRequest = IntrospectionRequest.builder()
                 .key(getApiKey(request))
                 .audienceServiceId(resolveAudienceServiceId(namespace))
@@ -72,6 +80,14 @@ public class AuthzRequestValidator {
                 .map(ApiKeyInput::getApiKey)
                 .filter(StringUtils::isNotEmpty)
                 .orElseThrow( () -> new BadRequestException("Api key is not provided"));
+    }
+
+    private String getTieredRateKey(AuthzRequest request) {
+        return Optional.ofNullable(request)
+                .map(AuthzRequest::getApiKeyInput)
+                .map(ApiKeyInput::getTieredRateKey)
+                .filter(StringUtils::isNotEmpty)
+                .orElseThrow(() -> new BadRequestException("Tiered rate key is not provided"));
     }
 
     private void assertValidRuleName(String policyName) {

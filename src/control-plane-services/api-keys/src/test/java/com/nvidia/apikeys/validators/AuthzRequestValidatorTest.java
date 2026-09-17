@@ -22,6 +22,7 @@ import static com.nvidia.apikeys.TestData.SERVICE_ID_1;
 import static com.nvidia.apikeys.utils.TestUtils.assertThrowsExceptionWithDetails;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 import com.nvidia.boot.exceptions.BadRequestException;
 import com.nvidia.apikeys.config.NakProperties;
@@ -86,6 +87,35 @@ class AuthzRequestValidatorTest {
                 BadRequestException.class,
                 () -> validator.validate(NAMESPACE, ruleName, request),
                 "Rule name is not supported: " + ruleName);
+    }
+
+    @Test
+    void validate_shouldBypassApiKeyIntrospectionForTieredRateLimitRule() {
+        when(nakProperties.getTieredRateLimitRuleName()).thenReturn("ssa.allow");
+        AuthzRequest request = new AuthzRequest(
+                ApiKeyInput.builder().tieredRateKey("test-nca-id").build());
+
+        PolicyEvaluationRequestVo result = validator.validate(NAMESPACE, "ssa.allow", request);
+
+        assertThat(result).isEqualTo(PolicyEvaluationRequestVo.builder()
+                .namespace(NAMESPACE)
+                .policyName("ssa.allow")
+                .tieredRateKey("test-nca-id")
+                .build());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @EmptySource
+    void validate_shouldThrowWhenTieredRateKeyMissing(String tieredRateKey) {
+        when(nakProperties.getTieredRateLimitRuleName()).thenReturn("ssa.allow");
+        AuthzRequest request = new AuthzRequest(
+                ApiKeyInput.builder().tieredRateKey(tieredRateKey).build());
+
+        assertThrowsExceptionWithDetails(
+                BadRequestException.class,
+                () -> validator.validate(NAMESPACE, "ssa.allow", request),
+                "Tiered rate key is not provided");
     }
 
     @Test

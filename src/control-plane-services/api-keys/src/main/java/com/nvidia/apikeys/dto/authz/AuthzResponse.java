@@ -71,6 +71,8 @@ public class AuthzResponse {
         String outputTokenRateLimit;
     }
 
-    private Result result;
+    // Result for apikey.allow/apikey.llm_allow; AccountTokenRateLimit for the
+    // tiered-rate-limit rule, which returns only the rate fields.
+    private Object result;
 
 }

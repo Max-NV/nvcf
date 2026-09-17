@@ -37,6 +37,15 @@ public class AuthzFacade {
 
     public AuthzResponse runPolicy(String namespace, String ruleName, AuthzRequest request) {
         var requestVo = requestValidator.validate(namespace, ruleName, request);
+
+        if (requestVo.getTieredRateKey() != null) {
+            return AuthzResponse.builder()
+                    .ruleName(ruleName)
+                    .namespace(namespace)
+                    .result(authzService.resolveTieredRateLimit(requestVo.getTieredRateKey()))
+                    .build();
+        }
+
         try {
             var introspectionResponse = introspectionFacade.introspect(
                     requestVo.getIntrospectionRequest());
