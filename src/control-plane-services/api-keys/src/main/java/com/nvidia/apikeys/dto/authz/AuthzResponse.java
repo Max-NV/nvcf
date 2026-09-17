@@ -18,6 +18,7 @@
 package com.nvidia.apikeys.dto.authz;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.annotation.Nullable;
 import tools.jackson.databind.JsonNode;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -49,6 +50,25 @@ public class AuthzResponse {
         String ownerId;
         @JsonProperty("policy")
         JsonNode policy;
+        // Only set for the *.llm_allow rule; absent otherwise. No rate-limit data source is
+        // wired up yet (mirrors the same gap on the managed side), so always null for now.
+        @JsonProperty("accountTokenRateLimit")
+        @Nullable
+        AccountTokenRateLimit accountTokenRateLimit;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AccountTokenRateLimit {
+
+        @JsonProperty("inputTokenRateLimit")
+        @Nullable
+        String inputTokenRateLimit;
+        @JsonProperty("outputTokenRateLimit")
+        @Nullable
+        String outputTokenRateLimit;
     }
 
     private Result result;

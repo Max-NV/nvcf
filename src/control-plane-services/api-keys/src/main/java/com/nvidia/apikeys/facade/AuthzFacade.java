@@ -42,7 +42,8 @@ public class AuthzFacade {
                     requestVo.getIntrospectionRequest());
             var result = authzService.evaluatePolicy(
                     requestVo.getIntrospectionRequest().getAudienceServiceId(),
-                    introspectionResponse);
+                    introspectionResponse,
+                    ruleName);
             return AuthzResponse.builder()
                     .ruleName(ruleName)
                     .namespace(namespace)

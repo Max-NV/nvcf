@@ -35,7 +35,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class AuthzRequestValidator {
 
-    private static final Pattern SUPPORTED_POLICY_NAME = Pattern.compile("[\\w-]+\\.allow");
+    // llm_allow is the LLM-invocation-specific rule; also carries accountTokenRateLimit.
+    private static final Pattern SUPPORTED_POLICY_NAME = Pattern.compile("[\\w-]+\\.(allow|llm_allow)");
 
     private final NakProperties nakProperties;
 

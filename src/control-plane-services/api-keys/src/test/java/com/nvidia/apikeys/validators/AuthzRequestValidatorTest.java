@@ -59,7 +59,7 @@ class AuthzRequestValidatorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"apikey.allow", "anything.allow"})
+    @ValueSource(strings = {"apikey.allow", "anything.allow", "apikey.llm_allow", "anything.llm_allow"})
     void validate_shouldAcceptWildcardAllowRuleNames(String ruleName) {
         AuthzRequest request = authzRequestWithKey(API_KEY_1);
 
