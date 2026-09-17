@@ -169,9 +169,9 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         responseObserver.onCompleted();
     }
 
-    // The API-key path's rate limit is already attached to the apikey.allow result resolved
-    // during auth (that same evaluation resolves it, keyed by the ncaId it already has). JWT
-    // has no such attribute, so it calls ServiceAccountService directly by ncaId instead.
+    // The API-key path's rate limit comes from the LLM-specific apikey.llm_allow evaluation
+    // (LlmApiKeyService), attached to its ApiKeyValidationResult. JWT has no such attribute,
+    // so it calls ServiceAccountService directly by ncaId instead.
     private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
             Authentication authentication,
             String ncaId) {
