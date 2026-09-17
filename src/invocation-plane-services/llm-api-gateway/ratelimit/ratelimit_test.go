@@ -20,6 +20,7 @@ package ratelimit
 import (
 	"context"
 	"errors"
+	"math"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -247,6 +248,39 @@ func (s *RateLimiterTestSuite) TestBucketsRefillOverTimeDoesNotOverflowForLargeR
 	s.Require().NoError(err)
 	s.True(res2.Allowed())
 	s.Equal(int64(4_833_333_333), res2.CurrentValue)
+}
+
+func (s *RateLimiterTestSuite) TestBucketsRefillSaturatesInsteadOfOverflowingValuePlusRefill() {
+	var (
+		// rate at int64 max exercises value+refill specifically: refill alone
+		// (computed correctly by mulDivInt64) is still enormous relative to
+		// rate-value, so a naive addition to an already-near-full bucket
+		// overflows even though the multiply-divide that produced refill did not.
+		rl = RateLimit{
+			Limit:  math.MaxInt64,
+			Period: time.Hour,
+		}
+		key = "rl:test:refill_add_overflow"
+	)
+	limiter := s.newLimiter()
+
+	// Drain a single token, leaving the bucket at rate-1: almost full, not
+	// full, so the guard is exercised via value+refill and not a fresh bucket.
+	res, err := limiter.CheckLimit(s.ctx, key, rl, 1, false, "", true)
+	s.Require().NoError(err)
+	s.True(res.Allowed())
+	s.Equal(int64(math.MaxInt64), res.CurrentValue)
+	s.Equal(int64(math.MaxInt64-1), res.RemainingValue())
+
+	// One second of a one-hour period refills roughly maxInt64/3600 tokens -
+	// far more than the 1 token of headroom left, so value+refill must saturate
+	// to rate rather than wrap around.
+	s.advance(time.Second)
+
+	res2, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
+	s.Require().NoError(err)
+	s.True(res2.Allowed())
+	s.Equal(int64(math.MaxInt64), res2.CurrentValue)
 }
 
 func (s *RateLimiterTestSuite) TestFailOpenAllowsOnStoreError() {
