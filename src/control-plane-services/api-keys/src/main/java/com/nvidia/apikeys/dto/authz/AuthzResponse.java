@@ -17,6 +17,7 @@
 
 package com.nvidia.apikeys.dto.authz;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.annotation.Nullable;
 import tools.jackson.databind.JsonNode;
@@ -57,10 +58,13 @@ public class AuthzResponse {
         AccountTokenRateLimit accountTokenRateLimit;
     }
 
+    // ALWAYS: the mapper's default is NON_NULL, but both fields being null is itself
+    // meaningful (no rate configured) and callers expect the two keys present, not a bare {}.
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     public static class AccountTokenRateLimit {
 
         @JsonProperty("inputTokenRateLimit")
