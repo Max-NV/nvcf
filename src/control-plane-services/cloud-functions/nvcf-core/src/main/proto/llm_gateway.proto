@@ -46,8 +46,8 @@ message AuthLlmInvokeResponse {
     optional string accountOutputTokenRateLimit = 7;
 
     message ModelSpec {
-        reserved 3;
-        reserved "tokenizer";
+        reserved 3, 5, 6;
+        reserved "tokenizer", "inputTokenRateLimit", "outputTokenRateLimit";
 
         repeated string uris = 1;
         optional string tokenRateLimit = 2;

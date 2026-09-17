@@ -14,11 +14,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.nvidia.nvcf.service.ssa;
+package com.nvidia.nvcf.service.serviceaccount;
 
 import com.nvidia.boot.exceptions.UpstreamException;
 import com.nvidia.nvcf.configuration.staticclientauth.FixedBearerExchangeFilterFunction;
-import com.nvidia.nvcf.configuration.staticclientauth.StaticClientAuthConfiguration.StaticClientSsaProperties;
+import com.nvidia.nvcf.configuration.staticclientauth.StaticClientAuthConfiguration.StaticClientServiceAccountProperties;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult;
 import com.nvidia.nvcf.service.apikeys.dto.ApiKeyValidationRequest;
 import com.nvidia.nvcf.service.apikeys.dto.ApiKeyValidationResponse;
@@ -38,12 +38,12 @@ import reactor.util.retry.Retry;
 import reactor.util.retry.RetryBackoffSpec;
 import tools.jackson.databind.json.JsonMapper;
 
-// Separate from ApiKeysClient: that name/shape is SAK-specific (introspects a raw key); this
-// is called with an already-resolved ncaId, so it's just a keyed PIP lookup.
+// Separate from ApiKeysClient: that name/shape is specific to the API-key path (introspects
+// a raw key); this is called with an already-resolved ncaId, so it's just a keyed lookup.
 @Service
 @RefreshScope
 @Slf4j
-public class SsaClient {
+public class ServiceAccountClient {
 
     private static final RetryBackoffSpec RETRY_SPEC = Retry.backoff(2, Duration.ofMillis(200))
             .jitter(0.75)
@@ -57,43 +57,44 @@ public class SsaClient {
                         "Failed to get response from external system after retries.");
             });
 
-    private static final String CLIENT_REGISTRATION_ID = "ssa";
+    private static final String CLIENT_REGISTRATION_ID = "service-account";
 
     private final WebClient webClient;
     private final JsonMapper jsonMapper;
     private final String evaluationUri;
     private final String requestPropertyName;
 
-    // ssa.allow is expected to be served by the same evaluations gateway as apikey.allow, so
-    // every property here defaults to that client's config; override the nvcf.ssa.*/
-    // spring.security.oauth2.client.registration.ssa.* properties if that stops being true.
-    public SsaClient(
-            @Value("${nvcf.ssa.base-url:${nvcf.api-keys.base-url}}") String baseUrl,
-            @Value("${nvcf.ssa.evaluation-uri:/v1/namespaces/nvcf/evaluations/ssa.allow}")
+    // This evaluation is expected to be served by the same gateway as apikey.allow, so every
+    // property here defaults to that client's config; override the
+    // nvcf.service-account.*/spring.security.oauth2.client.registration.service-account.*
+    // properties if that stops being true.
+    public ServiceAccountClient(
+            @Value("${nvcf.service-account.base-url:${nvcf.api-keys.base-url}}") String baseUrl,
+            @Value("${nvcf.service-account.evaluation-uri:/v1/namespaces/nvcf/evaluations/ssa.allow}")
             String evaluationUri,
-            // matches the input.<name>_key naming ssa.allow expects - see the comment in
-            // nvcf-uam-policies' policy/ssa/ssa.rego (placeholder pending the real PIP registration)
-            @Value("${nvcf.ssa.request-property-name:tiered_rate_key}")
+            // matches the input.<name>_key naming this evaluation expects (placeholder
+            // pending the real data source registration)
+            @Value("${nvcf.service-account.request-property-name:tiered_rate_key}")
             String requestPropertyName,
-            @Value("${spring.security.oauth2.client.registration.ssa.client-id:"
+            @Value("${spring.security.oauth2.client.registration.service-account.client-id:"
                     + "${spring.security.oauth2.client.registration.api-keys.client-id}}")
             String clientId,
-            @Value("${spring.security.oauth2.client.registration.ssa.client-secret:"
+            @Value("${spring.security.oauth2.client.registration.service-account.client-secret:"
                     + "${spring.security.oauth2.client.registration.api-keys.client-secret}}")
             String clientSecret,
-            @Value("${spring.security.oauth2.client.registration.ssa.scope:"
+            @Value("${spring.security.oauth2.client.registration.service-account.scope:"
                     + "${spring.security.oauth2.client.registration.api-keys.scope}}")
             String scope,
-            @Value("${spring.security.oauth2.client.provider.ssa.token-uri:"
+            @Value("${spring.security.oauth2.client.provider.service-account.token-uri:"
                     + "${spring.security.oauth2.client.provider.api-keys.token-uri}}")
             String tokenUri,
-            Optional<StaticClientSsaProperties> staticClientSsaProperties,
+            Optional<StaticClientServiceAccountProperties> staticClientServiceAccountProperties,
             WebClient.Builder webClientBuilder,
             JsonMapper jsonMapper) {
         this.evaluationUri = evaluationUri;
         this.requestPropertyName = requestPropertyName;
         this.jsonMapper = jsonMapper;
-        var authFilter = oauthFilter(staticClientSsaProperties, webClientBuilder,
+        var authFilter = oauthFilter(staticClientServiceAccountProperties, webClientBuilder,
                                      clientId, clientSecret, scope, tokenUri);
         this.webClient = webClientBuilder
                 .baseUrl(baseUrl)
@@ -102,13 +103,13 @@ public class SsaClient {
     }
 
     private static ExchangeFilterFunction oauthFilter(
-            Optional<StaticClientSsaProperties> staticClientSsaProperties,
+            Optional<StaticClientServiceAccountProperties> staticClientServiceAccountProperties,
             WebClient.Builder webClientBuilder,
             String clientId,
             String clientSecret,
             String scope,
             String tokenUri) {
-        return staticClientSsaProperties
+        return staticClientServiceAccountProperties
                 .map(p -> (ExchangeFilterFunction)
                         new FixedBearerExchangeFilterFunction(p::getToken))
                 .orElseGet(() -> NvcfOAuth2ClientUtils
@@ -127,16 +128,16 @@ public class SsaClient {
                                    .build())
                 .retrieve()
                 .onStatus(HttpStatusCode::is4xxClientError, response -> {
-                    log.error("4xx error from UAM: {}", response.statusCode());
+                    log.error("4xx error from NAK: {}", response.statusCode());
                     return response.createException();
                 })
                 .onStatus(HttpStatusCode::is5xxServerError, response -> {
-                    log.error("Error response code from UAM: {}", response.statusCode());
-                    return Mono.error(new UpstreamException("UAM returned 5xx error"));
+                    log.error("Error response code from NAK: {}", response.statusCode());
+                    return Mono.error(new UpstreamException("NAK returned 5xx error"));
                 })
                 .bodyToMono(ApiKeyValidationResponse.class)
                 .retryWhen(RETRY_SPEC)
-                .switchIfEmpty(Mono.error(() -> new UpstreamException("No response from UAM")))
+                .switchIfEmpty(Mono.error(() -> new UpstreamException("No response from NAK")))
                 .map(response -> jsonMapper.convertValue(response.getResult(),
                                                           ApiKeyValidationResult.RateLimitAttributes.class))
                 .block();

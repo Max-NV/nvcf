@@ -44,8 +44,8 @@ import org.springframework.util.StringUtils;
  * @param ownerId               for Service Keys, this parameter will be NCA Id; for Personal Keys,
  *                              this parameter will be OIDC Id
  * @param policy                resource types and scopes
- * @param accountTokenRateLimit account-scoped LLM token rate limit, resolved by sak.rego
- *                              itself (not stored or computed by NVCF); absent when none applies
+ * @param accountTokenRateLimit account-scoped LLM token rate limit, resolved by this same
+ *                              evaluation (not stored or computed by NVCF); absent when none applies
  */
 public record ApiKeyValidationResult(@JsonProperty("allowed") boolean allowed,
                               @JsonProperty("ncaId") String ncaId,

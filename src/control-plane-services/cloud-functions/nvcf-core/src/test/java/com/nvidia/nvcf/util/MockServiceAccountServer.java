@@ -32,23 +32,23 @@ import org.springframework.http.MediaType;
 import tools.jackson.databind.json.JsonMapper;
 
 @UtilityClass
-public class MockSsaServer {
+public class MockServiceAccountServer {
 
     private static final JsonMapper OBJECT_MAPPER = new JsonMapper();
     @Getter
-    private static WireMockServer mockSsaServer;
+    private static WireMockServer mockServiceAccountServer;
 
     @SneakyThrows
-    public static void start(String ssaBaseUrl) {
+    public static void start(String serviceAccountBaseUrl) {
         stop();
-        mockSsaServer = new WireMockServer(new URI(ssaBaseUrl).getPort());
-        mockSsaServer.start();
+        mockServiceAccountServer = new WireMockServer(new URI(serviceAccountBaseUrl).getPort());
+        mockServiceAccountServer.start();
         resetToDefault();
     }
 
     public static void stop() {
-        if (mockSsaServer != null) {
-            mockSsaServer.stop();
+        if (mockServiceAccountServer != null) {
+            mockServiceAccountServer.stop();
         }
     }
 
@@ -56,7 +56,7 @@ public class MockSsaServer {
     public static void setTieredRateLimitResponse(RateLimitAttributes rateLimit) {
         var response = new ApiKeyValidationResponse("nvcf", "ssa.allow", rateLimit);
         byte[] responseBytes = OBJECT_MAPPER.writeValueAsBytes(response);
-        mockSsaServer.stubFor(
+        mockServiceAccountServer.stubFor(
                 post(urlPathEqualTo("/v1/namespaces/nvcf/evaluations/ssa.allow"))
                         .willReturn(aResponse().withStatus(200)
                                             .withHeader(HttpHeaders.CONTENT_TYPE,
@@ -65,7 +65,7 @@ public class MockSsaServer {
     }
 
     public static void setUnavailable() {
-        mockSsaServer.stubFor(
+        mockServiceAccountServer.stubFor(
                 post(urlPathEqualTo("/v1/namespaces/nvcf/evaluations/ssa.allow"))
                         .willReturn(aResponse().withStatus(503)));
     }

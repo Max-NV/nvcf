@@ -33,7 +33,7 @@ import com.nvidia.nvcf.service.function.FunctionLlmService;
 import com.nvidia.nvcf.service.function.FunctionMapperService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService;
 import com.nvidia.nvcf.service.function.invocation.FunctionInvocationValidationService.FunctionContext;
-import com.nvidia.nvcf.service.ssa.SsaService;
+import com.nvidia.nvcf.service.serviceaccount.ServiceAccountService;
 import com.nvidia.nvcf.service.token.GrpcAuthService;
 import com.nvidia.nvcf.service.token.GrpcTokenService;
 import com.nvidia.nvcf.service.token.GrpcTokenService.NvcfIssuedToken.TokenType;
@@ -66,7 +66,7 @@ public class GrpcLlmService extends LlmGatewayImplBase {
     private final FunctionMapperService functionMapperService;
     private final FunctionLlmService functionLlmService;
     private final FunctionInvocationValidationService functionInvocationValidationService;
-    private final SsaService ssaService;
+    private final ServiceAccountService serviceAccountService;
 
     @Override
     public void authLlmInvocation(
@@ -143,14 +143,14 @@ public class GrpcLlmService extends LlmGatewayImplBase {
         responseObserver.onCompleted();
     }
 
-    // SAK's rate limit is already attached to the apikey.allow result resolved during auth
-    // (sak.rego resolves it in the same UAM call, keyed by the ncaId it already has). JWT has
-    // no such attribute, so it calls SsaService directly by ncaId instead.
+    // The API-key path's rate limit is already attached to the apikey.allow result resolved
+    // during auth (that same evaluation resolves it, keyed by the ncaId it already has). JWT
+    // has no such attribute, so it calls ServiceAccountService directly by ncaId instead.
     private Optional<ApiKeyValidationResult.RateLimitAttributes> resolveAccountRateLimit(
             Authentication authentication,
             String ncaId) {
         if (authentication instanceof JwtAuthenticationToken) {
-            return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
+            return Optional.ofNullable(serviceAccountService.getTieredRateLimit(ncaId));
         }
         if (!(authentication.getPrincipal() instanceof OAuth2AuthenticatedPrincipal principal)) {
             return Optional.empty();
@@ -160,10 +160,10 @@ public class GrpcLlmService extends LlmGatewayImplBase {
                 && result.accountTokenRateLimit() != null) {
             return Optional.of(result.accountTokenRateLimit());
         }
-        // sak.rego on an older deploy that doesn't populate accountTokenRateLimit yet -
-        // fall back to the standalone lookup instead of silently skipping enforcement
-        // during a policy/nvcf-core rollout skew.
-        return Optional.ofNullable(ssaService.getTieredRateLimit(ncaId));
+        // An older policy deploy that doesn't populate accountTokenRateLimit yet - fall back
+        // to the standalone lookup instead of silently skipping enforcement during a
+        // policy/nvcf-core rollout skew.
+        return Optional.ofNullable(serviceAccountService.getTieredRateLimit(ncaId));
     }
 
     private Optional<Long> resolvePriority(FunctionContext context) {

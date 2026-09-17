@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.nvidia.nvcf.service.ssa;
+package com.nvidia.nvcf.service.serviceaccount;
 
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
@@ -31,15 +31,15 @@ import org.springframework.web.reactive.function.client.WebClientRequestExceptio
 
 @Slf4j
 @Service
-public class SsaService {
+public class ServiceAccountService {
     private static final String MESG_RATE_LIMIT_FROM_BACKUP_CACHE =
-            "Returning tiered rate limit from backup cache as UAM is not reachable - '{}'";
+            "Returning tiered rate limit from backup cache as NAK is not reachable - '{}'";
     private static final String MESG_RATE_LIMIT_NOT_IN_BACKUP_CACHE =
-            "UAM is not reachable and tiered rate limit is not in backup cache anymore - '{}'";
+            "NAK is not reachable and tiered rate limit is not in backup cache anymore - '{}'";
     private static final String MESG_TIERED_RATE_LIMIT = "Tiered rate limit for ncaId '{}': '{}'";
     private static final RateLimitAttributes NO_RATE_LIMIT = new RateLimitAttributes(null, null);
 
-    private final SsaClient ssaClient;
+    private final ServiceAccountClient serviceAccountClient;
     private final boolean tieredRateLimitEnabled;
     private final LoadingCache<String, RateLimitAttributes> tieredRateLimitCache =
             Caffeine.newBuilder()
@@ -52,32 +52,33 @@ public class SsaService {
                     .scheduler(Scheduler.systemScheduler())
                     .build();
 
-    // ssa.allow's PIP (data.tiered_rate_val) isn't registered in UAM yet - nvcf-uam-policies
-    // MR !30 is unmerged and the real PIP source is still unknown. Default off so deploying
-    // this code doesn't fail-close every LLM invocation; flip once that dependency lands.
-    public SsaService(
-            SsaClient ssaClient,
-            @Value("${nvcf.ssa.tiered-rate-limit-enabled:false}") boolean tieredRateLimitEnabled) {
-        this.ssaClient = ssaClient;
+    // The tiered-rate policy's rate-lookup data source isn't registered yet, and the real
+    // provider is still unknown. Default off so deploying this code doesn't fail-close every
+    // LLM invocation; flip once that dependency lands.
+    public ServiceAccountService(
+            ServiceAccountClient serviceAccountClient,
+            @Value("${nvcf.service-account.tiered-rate-limit-enabled:false}") boolean tieredRateLimitEnabled) {
+        this.serviceAccountClient = serviceAccountClient;
         this.tieredRateLimitEnabled = tieredRateLimitEnabled;
     }
 
     private RateLimitAttributes fetchTieredRateLimit(String ncaId) {
         try {
-            var result = ssaClient.fetchTieredRateLimit(ncaId);
+            var result = serviceAccountClient.fetchTieredRateLimit(ncaId);
             log.debug(MESG_TIERED_RATE_LIMIT, ncaId, result);
             tieredRateLimitBackupCache.put(ncaId, result);
             return result;
         } catch (WebClientRequestException | UpstreamException ex) {
-            // WebClientRequestException is thrown when external service (such as UAM) is not
-            // reachable. NVCF should use the backup cache only when UAM is not reachable. For
+            // WebClientRequestException is thrown when the external service (NAK) is not
+            // reachable. NVCF should use the backup cache only when NAK is not reachable. For
             // other exceptions, backup cache should not be used.
             return fetchTieredRateLimitFromBackupCache(ncaId, ex);
         }
     }
 
-    // Throws if UAM is unreachable and the value isn't backup-cached either; matches SAK's
-    // fail-closed behavior on lookup failure rather than silently omitting the rate limit.
+    // Throws if NAK is unreachable and the value isn't backup-cached either; matches the
+    // API-key path's fail-closed behavior on lookup failure rather than silently omitting
+    // the rate limit.
     public RateLimitAttributes getTieredRateLimit(String ncaId) {
         if (!tieredRateLimitEnabled) {
             return NO_RATE_LIMIT;

@@ -80,9 +80,9 @@ public class StaticClientAuthConfiguration {
     @Data
     @RefreshScope
     @Configuration
-    @ConditionalOnProperty("nvcf.ssa.static.token")
-    @ConfigurationProperties("nvcf.ssa.static")
-    public static class StaticClientSsaProperties {
+    @ConditionalOnProperty("nvcf.service-account.static.token")
+    @ConfigurationProperties("nvcf.service-account.static")
+    public static class StaticClientServiceAccountProperties {
 
         private String token;
     }

@@ -48,7 +48,7 @@ import com.nvidia.nvcf.rest.function.management.dto.LlmInvocationConfigDto;
 import com.nvidia.nvcf.rest.function.management.dto.PriorityDto;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult.RateLimitAttributes;
 import com.nvidia.nvcf.service.apikeys.ApiKeyValidationResult.Resource;
-import com.nvidia.nvcf.util.MockSsaServer;
+import com.nvidia.nvcf.util.MockServiceAccountServer;
 import com.nvidia.nvcf.util.TestUtil;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
@@ -241,11 +241,34 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
     }
 
     @Test
-    void authLlmInvocation_accountRateLimitFromSsaJwtAuth() {
+    void authLlmInvocation_apiKeyAuthFallsBackToServiceAccountLookupWhenCarriesNone() {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        MockSsaServer.setTieredRateLimitResponse(new RateLimitAttributes("5000-M", "1000-M"));
+        // apikey.allow carries no accountTokenRateLimit (older deploy), but the fallback
+        // lookup has a real, distinct value - proves the fallback actually fires and its
+        // result flows through, not just that both paths coincidentally end up null.
+        setApiKeyValidationResponse(TEST_NCA_ID, TEST_OWNER_ID,
+                    List.of(new Resource("account-functions", "*")),
+                    List.of(SCOPE_INVOKE_FUNCTION), true);
+        MockServiceAccountServer.setTieredRateLimitResponse(new RateLimitAttributes("2000-M", "500-M"));
+        var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
+        var clientToken = "nvapi-stg-some-key";
+
+        var response = callLlmAuth(serviceToken, clientToken, TEST_FUNCTION_ID);
+
+        assertThat(response.hasAccountInputTokenRateLimit()).isTrue();
+        assertThat(response.getAccountInputTokenRateLimit()).isEqualTo("2000-M");
+        assertThat(response.hasAccountOutputTokenRateLimit()).isTrue();
+        assertThat(response.getAccountOutputTokenRateLimit()).isEqualTo("500-M");
+    }
+
+    @Test
+    void authLlmInvocation_accountRateLimitFromJwtAuth() {
+        setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
+        setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
+        saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
+        MockServiceAccountServer.setTieredRateLimitResponse(new RateLimitAttributes("5000-M", "1000-M"));
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt(TEST_CLIENT_SUBJECT,
                                                           List.of(SCOPE_INVOKE_FUNCTION), 100);
@@ -259,11 +282,11 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
     }
 
     @Test
-    void authLlmInvocation_noAccountRateLimitWhenSsaJwtAuthCarriesNone() {
+    void authLlmInvocation_noAccountRateLimitWhenJwtAuthCarriesNone() {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        MockSsaServer.setTieredRateLimitResponse(new RateLimitAttributes(null, null));
+        MockServiceAccountServer.setTieredRateLimitResponse(new RateLimitAttributes(null, null));
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt(TEST_CLIENT_SUBJECT,
                                                           List.of(SCOPE_INVOKE_FUNCTION), 100);
@@ -275,13 +298,13 @@ class GrpcLlmServiceTest extends BaseFunctionInvocationTest {
     }
 
     @Test
-    void authLlmInvocation_failsClosedWhenSsaJwtRateLimitLookupUnavailable() {
+    void authLlmInvocation_failsClosedWhenJwtRateLimitLookupUnavailable() {
         setFunctionActive(TEST_FUNCTION_ID, TEST_VERSION_ID_1);
         setFunctionType(TEST_FUNCTION_ID, TEST_VERSION_ID_1, FunctionType.LLM);
         saveFunctionModel(TEST_VERSION_ID_1, "meta/llama-3.1-70b-instruct", List.of(), null);
-        // No prior successful lookup for this ncaId, so SsaService's backup cache is also
-        // empty - matches apikey.allow's fail-closed posture when UAM is unreachable.
-        MockSsaServer.setUnavailable();
+        // No prior successful lookup for this ncaId, so the backup cache is also empty -
+        // matches apikey.allow's fail-closed posture when the external service is unreachable.
+        MockServiceAccountServer.setUnavailable();
         var serviceToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt("llm:check_invocation");
         var clientToken = MOCK_OAUTH2_TOKEN_SERVER.getJwt(TEST_CLIENT_SUBJECT,
                                                           List.of(SCOPE_INVOKE_FUNCTION), 100);

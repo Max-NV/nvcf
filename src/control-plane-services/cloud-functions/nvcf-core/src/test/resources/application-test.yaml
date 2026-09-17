@@ -144,10 +144,10 @@ spring:
             client-secret: ${kv.oauth2.client-secret}
             authorization-grant-type: client_credentials
             scope: helmreval:validate
-          # SSA - used for resolving the per-account tiered token rate limit for
-          # SSA-JWT authenticated LLM invocations
-          ssa:
-            provider: ssa
+          # Used for resolving the per-account tiered token rate limit for
+          # JWT authenticated LLM invocations
+          service-account:
+            provider: service-account
             client-id: ${kv.oauth2.client-id}
             client-secret: ${kv.oauth2.client-secret}
             authorization-grant-type: client_credentials
@@ -163,7 +163,7 @@ spring:
             token-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/token
           reval:
             token-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/token
-          ssa:
+          service-account:
             token-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/token
 
 logging:
@@ -233,10 +233,10 @@ nvcf:
       enabled: true
   api-keys:
     base-url: http://localhost:9093
-  ssa:
+  service-account:
     base-url: http://localhost:9112
-    # Off by default in production (see SsaService) until nvcf-uam-policies MR !30 merges;
-    # tests turn it on to exercise the real lookup/cache/fail-closed behavior.
+    # Off by default in production (see ServiceAccountService) until the companion policy
+    # change merges; tests turn it on to exercise the real lookup/cache/fail-closed behavior.
     tiered-rate-limit-enabled: true
   account:
     max-functions-allowed: 50

@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.nvidia.nvcf.service.ssa;
+package com.nvidia.nvcf.service.serviceaccount;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -26,18 +26,18 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
-class SsaServiceTest {
+class ServiceAccountServiceTest {
 
     @Mock
-    private SsaClient ssaClient;
+    private ServiceAccountClient serviceAccountClient;
 
     @Test
     void getTieredRateLimit_returnsEmptyAndSkipsLookupWhenDisabled() {
-        var ssaService = new SsaService(ssaClient, false);
+        var serviceAccountService = new ServiceAccountService(serviceAccountClient, false);
 
-        var result = ssaService.getTieredRateLimit("test-nca-id");
+        var result = serviceAccountService.getTieredRateLimit("test-nca-id");
 
         assertThat(result).isEqualTo(new RateLimitAttributes(null, null));
-        verifyNoInteractions(ssaClient);
+        verifyNoInteractions(serviceAccountClient);
     }
 }
