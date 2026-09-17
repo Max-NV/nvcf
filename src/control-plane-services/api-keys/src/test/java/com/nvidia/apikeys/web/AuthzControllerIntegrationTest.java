@@ -333,4 +333,37 @@ class AuthzControllerIntegrationTest extends BaseIntegrationTest {
                         "detail":"Tiered rate key is not provided",\
                         "instance":"/v1/namespaces/nvcf/evaluations/ssa.allow"}""", response.getBody());
     }
+
+    @Test
+    void runAuthz_shouldReturnErrorForUnconfiguredNamespaceOnTieredRateLimitRule() {
+        // Arrange
+        String namespace = "unknown-ns";
+        String policyName = "ssa.allow";
+        String requestBody = """
+                {
+                    "input": {
+                        "tiered_rate_key": "some-nca-id"
+                    }
+                }
+                """;
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
+
+        // Act
+        ResponseEntity<String> response = restTemplate.exchange(
+                "/v1/namespaces/{namespace}/evaluations/{policy-name}",
+                HttpMethod.POST, entity, String.class, namespace, policyName);
+
+        // Assert
+        assertThat(response.getStatusCode()).isEqualTo(BAD_REQUEST);
+        assertJsonBodyEquals(
+                """
+                        {"type":"urn:nv-boot:problem-details:bad-request",\
+                        "title":"Bad Request",\
+                        "status":400,\
+                        "detail":"Namespace 'unknown-ns' is not configured",\
+                        "instance":"/v1/namespaces/unknown-ns/evaluations/ssa.allow"}""", response.getBody());
+    }
 }

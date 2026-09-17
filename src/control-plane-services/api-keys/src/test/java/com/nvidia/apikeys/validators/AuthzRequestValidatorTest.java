@@ -158,6 +158,18 @@ class AuthzRequestValidatorTest {
                 "Namespace 'unknown-ns' is not configured");
     }
 
+    @Test
+    void validate_shouldThrowWhenNamespaceNotConfiguredForTieredRateLimitRule() {
+        when(nakProperties.getTieredRateLimitRuleName()).thenReturn("ssa.allow");
+        AuthzRequest request = new AuthzRequest(
+                ApiKeyInput.builder().tieredRateKey("test-nca-id").build());
+
+        assertThrowsExceptionWithDetails(
+                BadRequestException.class,
+                () -> validator.validate("unknown-ns", "ssa.allow", request),
+                "Namespace 'unknown-ns' is not configured");
+    }
+
     private static AuthzRequest authzRequestWithKey(String apiKey) {
         return new AuthzRequest(ApiKeyInput.builder().apiKey(apiKey).build());
     }

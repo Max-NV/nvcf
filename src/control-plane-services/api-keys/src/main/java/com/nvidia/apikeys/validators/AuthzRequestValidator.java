@@ -45,6 +45,7 @@ public class AuthzRequestValidator {
         assertValidRuleName(ruleName);
 
         if (ruleName.equals(nakProperties.getTieredRateLimitRuleName())) {
+            resolveAudienceServiceId(namespace);
             return PolicyEvaluationRequestVo.builder()
                     .namespace(namespace)
                     .policyName(ruleName)
