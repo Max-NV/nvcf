@@ -295,6 +295,7 @@ func (s *RateLimiterTestSuite) TestRefundSaturatesInsteadOfOverflowingCurrentVal
 	res2, err := limiter.CheckLimit(s.ctx, key, rl, -(math.MaxInt64 / 2), false, "", true)
 	s.Require().NoError(err)
 	s.True(res2.Allowed())
+	s.Equal(int64(math.MaxInt64), res2.RemainingValue())
 
 	res3, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
 	s.Require().NoError(err)

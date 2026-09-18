@@ -256,26 +256,7 @@ func (rl *rateLimiter) leakyBucket(
 			return currentValue, true, nil
 		}
 
-		// A negative tokensRequested (refund) turns this into an addition
-		// that can overflow the same way; it wraps negative first, so the
-		// clamp below would wrongly drain an already-near-full bucket.
-		var newValue int64
-		switch {
-		case tokensRequested >= 0:
-			newValue = currentValue - tokensRequested
-			if newValue < 0 {
-				newValue = 0
-			}
-		case tokensRequested == math.MinInt64:
-			newValue = rate // negating MinInt64 itself would overflow
-		default:
-			refund := -tokensRequested
-			if refund > rate-currentValue {
-				newValue = rate
-			} else {
-				newValue = currentValue + refund
-			}
-		}
+		newValue := saturatingConsume(currentValue, tokensRequested, rate)
 
 		var expected *bucketState
 		if exists {
@@ -294,6 +275,28 @@ func (rl *rateLimiter) leakyBucket(
 		}
 		return currentValue, swapped, nil
 	})
+}
+
+// saturatingConsume computes current-requested, clamped to [0, rate].
+// requested can be negative (a refund), which turns this into an addition;
+// splitting by sign avoids overflowing either direction. current must
+// already be in [0, rate].
+func saturatingConsume(current, requested, rate int64) int64 {
+	switch {
+	case requested >= 0:
+		if requested > current {
+			return 0
+		}
+		return current - requested
+	case requested == math.MinInt64:
+		return rate // negating MinInt64 itself would overflow
+	default:
+		refund := -requested
+		if refund > rate-current {
+			return rate
+		}
+		return current + refund
+	}
 }
 
 // mulDivInt64 computes a*b/c for non-negative a, b, c without a*b
