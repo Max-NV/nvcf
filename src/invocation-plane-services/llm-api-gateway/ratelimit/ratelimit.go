@@ -239,10 +239,8 @@ func (rl *rateLimiter) leakyBucket(
 		if periodMs > 0 {
 			refill = mulDivInt64(elapsed, rate, periodMs)
 		}
-		// value is always <= rate (an invariant maintained below and on write),
-		// so rate-value can't be negative; comparing against it instead of
-		// computing value+refill directly avoids overflowing the sum itself
-		// when refill is many multiples of rate (a long-idle bucket).
+		// value <= rate always holds, so compare before adding rather than
+		// clamping after - value+refill can overflow for a long-idle bucket.
 		var currentValue int64
 		if refill > rate-value {
 			currentValue = rate
@@ -258,12 +256,25 @@ func (rl *rateLimiter) leakyBucket(
 			return currentValue, true, nil
 		}
 
-		newValue := currentValue - tokensRequested
-		if newValue < 0 {
-			newValue = 0
-		}
-		if newValue > rate {
-			newValue = rate
+		// A negative tokensRequested (refund) turns this into an addition
+		// that can overflow the same way; it wraps negative first, so the
+		// clamp below would wrongly drain an already-near-full bucket.
+		var newValue int64
+		switch {
+		case tokensRequested >= 0:
+			newValue = currentValue - tokensRequested
+			if newValue < 0 {
+				newValue = 0
+			}
+		case tokensRequested == math.MinInt64:
+			newValue = rate // negating MinInt64 itself would overflow
+		default:
+			refund := -tokensRequested
+			if refund > rate-currentValue {
+				newValue = rate
+			} else {
+				newValue = currentValue + refund
+			}
 		}
 
 		var expected *bucketState
@@ -285,19 +296,12 @@ func (rl *rateLimiter) leakyBucket(
 	})
 }
 
-// mulDivInt64 computes a*b/c for non-negative a, b, c without the a*b
-// intermediate overflowing int64 - a large rate (bounded at int64 max by
-// policy validation) times a multi-day elapsed gap regularly exceeds
-// int64 even though the final quotient comfortably fits. Uses the 128-bit
-// multiply/divide primitives from math/bits rather than math/big to stay
-// allocation-free on this per-request hot path.
+// mulDivInt64 computes a*b/c for non-negative a, b, c without a*b
+// overflowing int64, even when the final quotient comfortably fits.
 func mulDivInt64(a, b, c int64) int64 {
 	hi, lo := bits.Mul64(uint64(a), uint64(b))
 	if hi >= uint64(c) {
-		// Quotient itself would overflow 64 bits. The caller compares this
-		// against a much smaller rate/remaining-capacity value and saturates,
-		// so returning MaxInt64 here is a safe upper bound, not a wraparound.
-		return math.MaxInt64
+		return math.MaxInt64 // quotient itself would overflow; caller saturates
 	}
 	q, _ := bits.Div64(hi, lo, uint64(c))
 	if q > uint64(math.MaxInt64) {

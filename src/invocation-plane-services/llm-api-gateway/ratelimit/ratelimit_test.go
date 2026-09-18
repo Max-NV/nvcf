@@ -222,9 +222,7 @@ func (s *RateLimiterTestSuite) TestBucketsRefillOverTime() {
 
 func (s *RateLimiterTestSuite) TestBucketsRefillOverTimeDoesNotOverflowForLargeRateAndLongElapsed() {
 	var (
-		// A valid "5000000000-MO" account limit: elapsed(ms) * rate overflows
-		// int64 before the /periodMs division brings it back down, unless the
-		// multiply-divide is done at higher precision.
+		// elapsed(ms) * rate overflows int64 before /periodMs brings it back down.
 		rl = RateLimit{
 			Limit:  5_000_000_000,
 			Period: 30 * 24 * time.Hour, // MO: fixed 30-day month
@@ -241,9 +239,7 @@ func (s *RateLimiterTestSuite) TestBucketsRefillOverTimeDoesNotOverflowForLargeR
 
 	s.advance(29 * 24 * time.Hour)
 
-	// 29/30 of the period elapsed: refill = 2_505_600_000 * 5_000_000_000 /
-	// 2_592_000_000 = 4_833_333_333 (floor). A naive elapsed*rate overflow
-	// produces a negative value instead.
+	// 29/30 of the period elapsed: (29*5e9)/30 = 4_833_333_333 (floor).
 	res2, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
 	s.Require().NoError(err)
 	s.True(res2.Allowed())
@@ -252,10 +248,8 @@ func (s *RateLimiterTestSuite) TestBucketsRefillOverTimeDoesNotOverflowForLargeR
 
 func (s *RateLimiterTestSuite) TestBucketsRefillSaturatesInsteadOfOverflowingValuePlusRefill() {
 	var (
-		// rate at int64 max exercises value+refill specifically: refill alone
-		// (computed correctly by mulDivInt64) is still enormous relative to
-		// rate-value, so a naive addition to an already-near-full bucket
-		// overflows even though the multiply-divide that produced refill did not.
+		// rate at int64 max: refill alone is huge relative to rate-value, so
+		// value+refill overflows even though mulDivInt64 computed refill fine.
 		rl = RateLimit{
 			Limit:  math.MaxInt64,
 			Period: time.Hour,
@@ -264,23 +258,47 @@ func (s *RateLimiterTestSuite) TestBucketsRefillSaturatesInsteadOfOverflowingVal
 	)
 	limiter := s.newLimiter()
 
-	// Drain a single token, leaving the bucket at rate-1: almost full, not
-	// full, so the guard is exercised via value+refill and not a fresh bucket.
+	// Leave the bucket at rate-1, not empty or full, to exercise the add.
 	res, err := limiter.CheckLimit(s.ctx, key, rl, 1, false, "", true)
 	s.Require().NoError(err)
 	s.True(res.Allowed())
 	s.Equal(int64(math.MaxInt64), res.CurrentValue)
 	s.Equal(int64(math.MaxInt64-1), res.RemainingValue())
 
-	// One second of a one-hour period refills roughly maxInt64/3600 tokens -
-	// far more than the 1 token of headroom left, so value+refill must saturate
-	// to rate rather than wrap around.
 	s.advance(time.Second)
 
 	res2, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
 	s.Require().NoError(err)
 	s.True(res2.Allowed())
 	s.Equal(int64(math.MaxInt64), res2.CurrentValue)
+}
+
+func (s *RateLimiterTestSuite) TestRefundSaturatesInsteadOfOverflowingCurrentValueMinusTokensRequested() {
+	var (
+		// A negative tokensRequested is a refund (see
+		// TestBucketsRefilledManuallyWithNegativeTokensRequested); at rate
+		// maxInt64, refunding into a near-full bucket overflows the subtraction.
+		rl = RateLimit{
+			Limit:  math.MaxInt64,
+			Period: time.Hour,
+		}
+		key = "rl:test:refund_overflow"
+	)
+	limiter := s.newLimiter()
+
+	// Leave the bucket at rate-1, not empty or full, to exercise the refund.
+	res, err := limiter.CheckLimit(s.ctx, key, rl, 1, false, "", true)
+	s.Require().NoError(err)
+	s.Equal(int64(math.MaxInt64-1), res.RemainingValue())
+
+	// Refunding half the rate pushes currentValue-tokensRequested past rate.
+	res2, err := limiter.CheckLimit(s.ctx, key, rl, -(math.MaxInt64 / 2), false, "", true)
+	s.Require().NoError(err)
+	s.True(res2.Allowed())
+
+	res3, err := limiter.CheckLimit(s.ctx, key, rl, 0, true, "", false)
+	s.Require().NoError(err)
+	s.Equal(int64(math.MaxInt64), res3.CurrentValue)
 }
 
 func (s *RateLimiterTestSuite) TestFailOpenAllowsOnStoreError() {
